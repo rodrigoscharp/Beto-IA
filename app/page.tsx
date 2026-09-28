@@ -87,6 +87,10 @@ const FILLERS = [
 ];
 const FILLER_CACHE = "beto-fillers-v1";
 const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar mais que isso
+/* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
+const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
+const FOLLOWUP_GAP   = 250;    // respiro entre o fim da voz dele e abrir o microfone (evita ouvir o próprio eco)
+const END_CONVERSATION = /^(valeu|obrigad[oa]|tchau|é isso|só isso|era isso|por hoje é isso|pode parar|pode ficar quieto|fechou|beleza)([\s,.!]+(beto|chefe))?[\s.!]*$/i;
 const FILLER_MIN_WORDS = 4;    // comando curto ("pausa", "próxima") não precisa de enrolação
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -181,6 +185,7 @@ export default function JarvisPage() {
   const fillerEnd      = useRef<(() => void) | null>(null);
   const fillerDone     = useRef<Promise<void> | null>(null);
   const fillerLast     = useRef(-1);
+  const musicPlaying   = useRef(false);
 
   /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
 
@@ -752,6 +757,16 @@ export default function JarvisPage() {
       if (t.length < 2) return;
       const lower = t.toLowerCase();
       if (WAKE_WORDS.some(w => lower === w || lower === w + ".")) return;
+      if (END_CONVERSATION.test(lower)) {
+        // "valeu", "obrigado"…: encerra a conversa sem mandar nada ao modelo.
+        captured = true;
+        if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+        clearTimeout(hardTimeout);
+        try { rec.abort(); } catch { /* ok */ }
+        setMode("wake");
+        startWake();
+        return;
+      }
       captured = true;
       if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
       clearTimeout(hardTimeout);
@@ -888,9 +903,19 @@ export default function JarvisPage() {
       const rawReply = data.reply as string;
       history.current = [...msgs, { role: "assistant", content: rawReply }];
 
-      const done = () => { setMode("wake"); setTimeout(startWake, 300); };
       if (fillerTimer) clearTimeout(fillerTimer);
-      const say  = async (t: string) => { await waitFiller(); speak(sanitize(t), done); };
+      // Respostas de conversa/consulta continuam ouvindo; comando de música, timer e memória voltam ao wake word
+      // (com música tocando o microfone aberto captaria a letra como se fosse você).
+      const say  = async (t: string, followUp = false) => {
+        await waitFiller();
+        speak(sanitize(t), () => {
+          if (followUp && !musicPlaying.current && getSR()) {
+            setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
+          } else {
+            setMode("wake"); setTimeout(startWake, 300);
+          }
+        });
+      };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
       const calendar = parseTag<CalendarAction>(rawReply, TAG.CALENDAR);
@@ -902,14 +927,14 @@ export default function JarvisPage() {
       const briefing = parseTag<SpotifyAction>(rawReply,  TAG.BRIEFING);
 
       if      (spotify.action)  say(await execSpotify(spotify.action));
-      else if (calendar.action) say(await execCalendar(calendar.action));
+      else if (calendar.action) say(await execCalendar(calendar.action), true);
 
-      else if (github.action)   say(await execGithub(github.action));
-      else if (gmail.action)    say(await execGmail(gmail.action));
+      else if (github.action)   say(await execGithub(github.action), true);
+      else if (gmail.action)    say(await execGmail(gmail.action), true);
       else if (timer.action)    say(execTimer(timer.action));
       else if (memory.action)   say(await execMemory(memory.action, memory.text));
-      else if (briefing.action) say(await execBriefing());
-      else                      say(rawReply);
+      else if (briefing.action) say(await execBriefing(), true);
+      else                      say(rawReply, true);
 
     } catch {
       if (fillerTimer) clearTimeout(fillerTimer);
@@ -967,7 +992,7 @@ export default function JarvisPage() {
     <main style={{ position: "fixed", inset: 0, background: "var(--bg)" }}>
       <Orb state={orbState} onClick={handleClick} theme={theme} />
 
-      <MiniPlayer onCommand={handleSpotifyCommand} />
+      <MiniPlayer onCommand={handleSpotifyCommand} onPlaying={(p) => { musicPlaying.current = p; }} />
 
       {/* Status badge — top left */}
       <div className="beto-chrome" style={{

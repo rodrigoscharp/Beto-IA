@@ -14,6 +14,8 @@ interface NowPlaying {
 
 interface Props {
   onCommand: (action: string) => void;
+  /** Avisa quando começa/para de tocar: o Beto não abre o microfone para conversa com música rolando. */
+  onPlaying?: (playing: boolean) => void;
 }
 
 function fmt(ms: number) {
@@ -48,12 +50,14 @@ const IconPause = () => (
   </svg>
 );
 
-export default function MiniPlayer({ onCommand }: Props) {
+export default function MiniPlayer({ onCommand, onPlaying }: Props) {
   const [info,    setInfo]    = useState<NowPlaying | null>(null);
   const [visible, setVisible] = useState(false);
   const [localMs, setLocalMs] = useState(0);
   const [hover,   setHover]   = useState<string | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onPlayingRef = useRef(onPlaying);
+  onPlayingRef.current = onPlaying;
 
   useEffect(() => {
     const poll = async () => {
@@ -61,6 +65,7 @@ export default function MiniPlayer({ onCommand }: Props) {
         const res = await fetch("/api/spotify/now-playing");
         if (!res.ok) return;
         const d: NowPlaying = await res.json();
+        onPlayingRef.current?.(!!d.playing);
         if (d.playing) { setInfo(d); setLocalMs(d.progressMs); setVisible(true); }
         else setVisible(false);
       } catch { /* ignore */ }
