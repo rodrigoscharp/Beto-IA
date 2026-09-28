@@ -29,10 +29,19 @@ export async function verifyPassword(input: string) {
   return safeEqual(await sha256Hex(input), PASSWORD_SHA256);
 }
 
+/* AUTH_SECRET é obrigatório em produção. O hash da senha está neste repositório (público): usá-lo como chave
+   deixaria qualquer um forjar um cookie de sessão válido. O fallback existe só para rodar em desenvolvimento. */
+function signingSecret(): string {
+  const secret = process.env.AUTH_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") throw new Error("AUTH_SECRET não configurado.");
+  return PASSWORD_SHA256;
+}
+
 async function hmac(payload: string) {
   const key = await crypto.subtle.importKey(
     "raw",
-    enc.encode(process.env.AUTH_SECRET ?? PASSWORD_SHA256),
+    enc.encode(signingSecret()),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -50,5 +59,6 @@ export async function verifySession(token: string | undefined) {
   const [expiry, sig] = token.split(".");
   if (!expiry || !sig) return false;
   if (Number(expiry) < Date.now() / 1000) return false;
-  return safeEqual(sig, await hmac(expiry));
+  try { return safeEqual(sig, await hmac(expiry)); }
+  catch { return false; } // sem AUTH_SECRET em produção: recusa tudo em vez de aceitar chave pública
 }

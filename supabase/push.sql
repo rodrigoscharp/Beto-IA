@@ -13,3 +13,10 @@ create table if not exists push_seen (
   id         text primary key,
   created_at timestamptz default now()
 );
+
+-- Segredos do servidor (ex.: refresh token do Google, sempre CIFRADO com TOKEN_ENC_KEY antes de gravar).
+create table if not exists push_secrets (
+  name       text primary key,
+  value      text not null,
+  updated_at timestamptz default now()
+);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { saveGoogleRefreshToken } from "@/lib/secrets";
 
 export async function GET(req: NextRequest) {
   const googleError = req.nextUrl.searchParams.get("error");
@@ -35,6 +36,8 @@ export async function GET(req: NextRequest) {
     httpOnly: true, path: "/", maxAge: d.expires_in ?? 3600, sameSite: "lax", secure: isHttps,
   });
   if (d.refresh_token) {
+    // O cron de push não tem cookie: guarda o refresh token cifrado no servidor.
+    await saveGoogleRefreshToken(d.refresh_token);
     response.cookies.set("gc_rt", d.refresh_token, {
       httpOnly: true, path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax", secure: isHttps,
     });

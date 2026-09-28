@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { loadGoogleRefreshToken } from "@/lib/secrets";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -70,8 +71,8 @@ export async function getGoogleToken(req: NextRequest): Promise<string | null> {
   return rt ? refreshAccessToken(rt) : null;
 }
 
-/** Sem navegador (cron de push): usa o refresh token guardado no ambiente. */
+/** Sem navegador (cron de push): refresh token da env ou o guardado (criptografado) no Supabase no login do Google. */
 export async function getServerGoogleToken(): Promise<string | null> {
-  const rt = process.env.GOOGLE_REFRESH_TOKEN;
+  const rt = process.env.GOOGLE_REFRESH_TOKEN ?? await loadGoogleRefreshToken();
   return rt ? refreshAccessToken(rt) : null;
 }

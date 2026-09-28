@@ -126,8 +126,8 @@ A anon key padrão do Supabase já tem permissão de leitura e escrita nessa tab
 O Beto avisa por push (Mac e celular) o que é importante mesmo sem a aba aberta: email importante, reunião chegando, review pedido e CI/deploy falhando. Hábito, treino e conflitos de agenda ficam só na voz.
 
 1. Rode `supabase/push.sql` no SQL Editor do Supabase (tabelas `push_subscriptions` e `push_seen`).
-2. Variáveis na Vercel: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gere com `npx web-push generate-vapid-keys`), `CRON_SECRET` e `GOOGLE_REFRESH_TOKEN`.
-   O refresh token sai de `/api/push/google-token?raw=1` (logado, depois de autorizar o Google em `/api/calendar/login`).
+2. Variáveis na Vercel: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gere com `npx web-push generate-vapid-keys`), `CRON_SECRET` e `TOKEN_ENC_KEY` (`openssl rand -hex 32`).
+   Autorize o Google uma vez em `/api/calendar/login`: o callback guarda o refresh token cifrado (AES-GCM com `TOKEN_ENC_KEY`) na tabela `push_secrets`. Se preferir, `GOOGLE_REFRESH_TOKEN` na env tem prioridade.
 3. Secret `CRON_SECRET` (mesmo valor) no GitHub: o workflow `.github/workflows/alerts-cron.yml` chama `/api/cron/alerts` a cada 5 min (o cron gratuito da Vercel só roda 1x por dia).
 4. No app, clique em `push: off` para ativar neste aparelho. No iPhone o Beto precisa estar instalado na tela de início.
 
