@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, workingModel } from "@/lib/groq";
 import { listMemories } from "@/lib/supabase";
+import { getMyHubContext, myHubPromptBlock, type MyHubContext } from "@/lib/myhub";
 import { getBrasiliaTime } from "@/lib/time";
 
-function buildSystemPrompt(memories: { content: string; category: string }[]) {
+function buildSystemPrompt(memories: { content: string; category: string }[], myhub: MyHubContext | null) {
   const memoryBlock = memories.length > 0
     ? `\n\nMEMÓRIAS SOBRE O RODRIGO (use isso para personalizar suas respostas):\n${memories.map(m => `- [${m.category}] ${m.content}`).join("\n")}`
     : "";
@@ -20,7 +21,7 @@ PERSONALIDADE E TOM: Você fala como um brother e empresário parceiro do Rodrig
 
 Você sabe ler o momento e ajustar o tom. Modo trabalho (código, produto, negócio, dinheiro, decisões, prazos, problemas sérios): objetivo, claro, sem piada, com visão de dono e raciocínio de sênior; chega na resposta rápido e diz o que faria. Modo resenha (papo solto, zoeira, futebol, filmes, fim de dia, assuntos leves): descontraído e bem-humorado, com ironia leve e provocação de amigo, sem exagero. Se ele estiver estressado, cansado, desanimado ou passando por algo pessoal delicado, deixe a brincadeira de lado, acolha primeiro e depois ajude. Nunca faça piada no meio de um assunto sério nem de algo que ele claramente está levando a sério. Se ele brincar com você, entre na brincadeira e depois volte pro assunto se houver um. Acompanhe a energia dele: se ele está curto e objetivo, seja curto e objetivo.
 
-HORÁRIO ATUAL (Brasília, UTC-3): ${dateLabel} — ${time}h — ${period}. Use isso para saudações e contexto de hora do dia.${memoryBlock}
+HORÁRIO ATUAL (Brasília, UTC-3): ${dateLabel} — ${time}h — ${period}. Use isso para saudações e contexto de hora do dia.${memoryBlock}${myHubPromptBlock(myhub)}
 
 HONESTIDADE: Use todo o seu conhecimento com confiança. Quando tiver dúvida real sobre um fato específico (número exato, versão de biblioteca, data, preço, lei), diga em uma frase que não tem certeza em vez de inventar, mas continue ajudando com o que sabe e com um caminho pra confirmar. Você não tem acesso à internet nem a dados em tempo real (notícias, cotações, placar, clima) fora das integrações abaixo; se ele pedir isso e não houver tag adequada, diga que não consegue ver isso agora e ofereça o que puder com base no que você sabe. Nunca invente notícias, citações, estatísticas ou dados de agenda, email ou GitHub.
 
@@ -135,11 +136,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "GROQ_API_KEY não configurada no servidor." }, { status: 500 });
     }
 
-    const memories = await getCachedMemories();
+    const [memories, myhub] = await Promise.all([getCachedMemories(), getMyHubContext()]);
 
     const reply = await groqChat(apiKey, {
       messages: [
-        { role: "system", content: buildSystemPrompt(memories) },
+        { role: "system", content: buildSystemPrompt(memories, myhub) },
         ...messages,
       ],
       temperature: 0.7,
