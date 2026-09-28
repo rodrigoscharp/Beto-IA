@@ -1,35 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#0d1526"/>
-      <stop offset="100%" stop-color="#04070d"/>
-    </linearGradient>
     <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   stop-color="#3aa0ff" stop-opacity="0.38"/>
-      <stop offset="100%" stop-color="#3aa0ff" stop-opacity="0"/>
+      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="orb" cx="38%" cy="30%" r="80%">
-      <stop offset="0%"   stop-color="#8ff0ff"/>
-      <stop offset="40%"  stop-color="#2f9bff"/>
-      <stop offset="100%" stop-color="#3b2fd0"/>
-    </radialGradient>
-    <clipPath id="oc"><circle cx="512" cy="512" r="290"/></clipPath>
-    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="10" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
   </defs>
 
-  <rect width="1024" height="1024" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="440" fill="url(#glow)"/>
+  <rect width="1024" height="1024" fill="#000000"/>
+  <circle cx="512" cy="512" r="420" fill="url(#glow)"/>
 
-  <!-- Orb -->
-  <circle cx="512" cy="512" r="290" fill="url(#orb)"/>
-  <ellipse cx="460" cy="330" rx="200" ry="110" fill="#ffffff" opacity="0.14" clip-path="url(#oc)"/>
+  <!-- Ring -->
+  <circle cx="512" cy="512" r="290" fill="none" stroke="#ffffff" stroke-width="8"/>
 
   <!-- AI sparkle -->
-  <g fill="#ffffff" filter="url(#soft)">
+  <g fill="#ffffff">
     <path d="M512 322 Q512 512 702 512 Q512 512 512 702 Q512 512 322 512 Q512 512 512 322Z"/>
-    <path d="M700 318 Q700 362 744 362 Q700 362 700 406 Q700 362 656 362 Q700 362 700 318Z" opacity="0.9"/>
+    <path d="M700 318 Q700 362 744 362 Q700 362 700 406 Q700 362 656 362 Q700 362 700 318Z"/>
   </g>
 </svg>

@@ -41,7 +41,7 @@ export default function LoginPage() {
       <img
         src="/icons/icon-512.png" alt="Beto"
         width={132} height={132}
-        style={{ borderRadius: 30, boxShadow: "0 0 60px rgba(0,212,255,0.28), 0 0 0 1px rgba(0,212,255,0.18)" }}
+        style={{ borderRadius: 30, boxShadow: "0 0 60px rgba(255,255,255,0.10), 0 0 0 1px rgba(255,255,255,0.14)" }}
       />
 
       <div style={{
