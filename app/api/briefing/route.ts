@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { groqChat } from "@/lib/groq";
 import { getGoogleToken, gmailHeader, GmailMessage } from "@/lib/google";
 import { getBrasiliaTime } from "@/lib/time";
 
@@ -144,21 +144,19 @@ export async function GET(req: NextRequest) {
   ].filter(Boolean).join("\n");
 
   try {
-    const groq       = new Groq({ apiKey });
-    const completion = await groq.chat.completions.create({
-      model:    "llama-3.3-70b-versatile",
+    const text = await groqChat(apiKey, {
       messages: [
         {
           role:    "system",
-          content: "Você é o J.A.R.V.I.S do Rodrigo. Gere um briefing matinal falado, natural e motivador usando APENAS as informações fornecidas abaixo — nunca invente, complete ou assuma nada que não esteja explícito. Tom: casual, direto. Máximo 5 frases. Comece com 'Bom dia, Rodrigo!'. Cubra: data, eventos do dia, emails (citar remetente e assunto exatos) e clima se disponível. Termine com uma frase curta de incentivo.",
+          content: "Você é o Beto, parceiro do Rodrigo. Gere um briefing matinal falado, natural e motivador usando APENAS as informações fornecidas abaixo — nunca invente, complete ou assuma nada que não esteja explícito. Tom: casual, direto. Máximo 5 frases. Comece com 'Bom dia, Rodrigo!'. Cubra: data, eventos do dia, emails (citar remetente e assunto exatos) e clima se disponível. Termine com uma frase curta de incentivo.",
         },
         { role: "user", content: context },
       ],
       temperature: 0.8,
-      max_tokens:  400,
+      max_tokens:  1200,
     });
 
-    const briefing = completion.choices[0]?.message?.content ?? "Não consegui montar o briefing.";
+    const briefing = text || "Não consegui montar o briefing.";
     return NextResponse.json({ briefing });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro desconhecido";

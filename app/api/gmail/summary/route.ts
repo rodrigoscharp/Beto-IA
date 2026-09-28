@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
+import { groqChat } from "@/lib/groq";
 import { getGoogleToken, gmailHeader, GmailMessage } from "@/lib/google";
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
@@ -109,9 +109,7 @@ export async function GET(req: NextRequest) {
 
     const periodLabel = days === 1 ? "hoje" : days === 2 ? "de ontem e hoje" : days ? `dos últimos ${days} dias` : "não lidos";
 
-    const groq       = new Groq({ apiKey });
-    const completion = await groq.chat.completions.create({
-      model:    "llama-3.3-70b-versatile",
+    const text = await groqChat(apiKey, {
       messages: [
         {
           role:    "system",
@@ -133,10 +131,10 @@ Resposta em português casual. Formato:
         },
       ],
       temperature: 0.1,
-      max_tokens:  350,
+      max_tokens:  1000,
     });
 
-    const summary = completion.choices[0]?.message?.content ?? "Não consegui analisar os emails.";
+    const summary = text || "Não consegui analisar os emails.";
     return NextResponse.json({ summary, count: details.length });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro desconhecido";

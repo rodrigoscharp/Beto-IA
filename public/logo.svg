@@ -1,102 +1,35 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <radialGradient id="bg" cx="50%" cy="42%" r="75%">
-      <stop offset="0%"  stop-color="#0e2238"/>
-      <stop offset="55%" stop-color="#060d16"/>
-      <stop offset="100%" stop-color="#02050a"/>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#0d1526"/>
+      <stop offset="100%" stop-color="#04070d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#3aa0ff" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#3aa0ff" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="ring" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   stop-color="#00f5ff"/>
-      <stop offset="55%"  stop-color="#4aa8ff"/>
-      <stop offset="100%" stop-color="#ffd700"/>
-    </linearGradient>
-    <linearGradient id="ringR" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%"   stop-color="#ffd700"/>
-      <stop offset="100%" stop-color="#00f5ff"/>
-    </linearGradient>
-    <radialGradient id="orb" cx="50%" cy="38%" r="70%">
-      <stop offset="0%"   stop-color="#134b78" stop-opacity="0.95"/>
-      <stop offset="60%"  stop-color="#08182a" stop-opacity="0.98"/>
-      <stop offset="100%" stop-color="#040a12"/>
+    <radialGradient id="orb" cx="38%" cy="30%" r="80%">
+      <stop offset="0%"   stop-color="#8ff0ff"/>
+      <stop offset="40%"  stop-color="#2f9bff"/>
+      <stop offset="100%" stop-color="#3b2fd0"/>
     </radialGradient>
-    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   stop-color="#00d4ff" stop-opacity="0.45"/>
-      <stop offset="60%"  stop-color="#00d4ff" stop-opacity="0.10"/>
-      <stop offset="100%" stop-color="#00d4ff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="letter" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%"   stop-color="#ffffff"/>
-      <stop offset="45%"  stop-color="#b8f6ff"/>
-      <stop offset="100%" stop-color="#ffe27a"/>
-    </linearGradient>
-    <linearGradient id="wave" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%"   stop-color="#00f5ff" stop-opacity="0"/>
-      <stop offset="25%"  stop-color="#00f5ff" stop-opacity="0.95"/>
-      <stop offset="75%"  stop-color="#ffd700" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#ffd700" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="glass" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.22"/>
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="14" result="b"/>
+    <clipPath id="oc"><circle cx="512" cy="512" r="290"/></clipPath>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
-    <filter id="glowSoft" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="6" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <clipPath id="orbClip"><circle cx="512" cy="512" r="262"/></clipPath>
   </defs>
 
-  <!-- Background -->
   <rect width="1024" height="1024" fill="url(#bg)"/>
-  <circle cx="512" cy="512" r="470" fill="url(#halo)"/>
-
-  <!-- Outer hexagon ring -->
-  <polygon points="512,128 845,320 845,704 512,896 179,704 179,320"
-           fill="none" stroke="url(#ring)" stroke-width="16" stroke-linejoin="round" filter="url(#glow)"/>
-  <!-- Inner hexagon, dashed -->
-  <polygon points="512,176 803,344 803,680 512,848 221,680 221,344"
-           fill="none" stroke="url(#ringR)" stroke-width="4" stroke-linejoin="round"
-           stroke-dasharray="46 22" opacity="0.55"/>
-
-  <!-- Vertex nodes -->
-  <g filter="url(#glowSoft)">
-    <circle cx="512" cy="128" r="14" fill="#00f5ff"/>
-    <circle cx="845" cy="320" r="10" fill="#4aa8ff"/>
-    <circle cx="845" cy="704" r="14" fill="#ffd700"/>
-    <circle cx="512" cy="896" r="10" fill="#ffd700"/>
-    <circle cx="179" cy="704" r="14" fill="#7fd0ff"/>
-    <circle cx="179" cy="320" r="10" fill="#00f5ff"/>
-  </g>
+  <circle cx="512" cy="512" r="440" fill="url(#glow)"/>
 
   <!-- Orb -->
-  <circle cx="512" cy="512" r="290" fill="none" stroke="#00d4ff" stroke-opacity="0.25" stroke-width="3"/>
-  <circle cx="512" cy="512" r="262" fill="url(#orb)"/>
-  <circle cx="512" cy="512" r="262" fill="none" stroke="url(#ring)" stroke-width="5" stroke-opacity="0.9"/>
+  <circle cx="512" cy="512" r="290" fill="url(#orb)"/>
+  <ellipse cx="460" cy="330" rx="200" ry="110" fill="#ffffff" opacity="0.14" clip-path="url(#oc)"/>
 
-  <!-- Glass highlight -->
-  <g clip-path="url(#orbClip)">
-    <ellipse cx="512" cy="330" rx="230" ry="130" fill="url(#glass)"/>
-    <!-- Voice waveform running behind the B -->
-    <path d="M226 512 C 262 512 268 440 300 440 S 336 584 368 584 S 392 470 420 470 S 444 540 470 540
-             S 494 512 512 512 S 540 486 566 486 S 596 574 628 574 S 656 430 690 430 S 716 512 798 512"
-          fill="none" stroke="url(#wave)" stroke-width="9" stroke-linecap="round" filter="url(#glowSoft)"/>
-  </g>
-
-  <!-- Letter B -->
-  <g transform="translate(-8 0)" filter="url(#glow)">
-    <path d="M420 350 V674
-             M420 350 H520 A80 80 0 0 1 520 510 H420
-             M420 510 H540 A82 82 0 0 1 540 674 H420"
-          fill="none" stroke="url(#letter)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
-
-  <!-- Glints -->
-  <g fill="#ffe9a0" filter="url(#glowSoft)">
-    <path d="M760 250 l8 22 22 8 -22 8 -8 22 -8 -22 -22 -8 22 -8z"/>
-    <path d="M262 780 l5 14 14 5 -14 5 -5 14 -5 -14 -14 -5 14 -5z" opacity="0.8"/>
+  <!-- AI sparkle -->
+  <g fill="#ffffff" filter="url(#soft)">
+    <path d="M512 322 Q512 512 702 512 Q512 512 512 702 Q512 512 322 512 Q512 512 512 322Z"/>
+    <path d="M700 318 Q700 362 744 362 Q700 362 700 406 Q700 362 656 362 Q700 362 700 318Z" opacity="0.9"/>
   </g>
 </svg>
