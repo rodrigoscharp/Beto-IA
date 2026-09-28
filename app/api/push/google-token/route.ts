@@ -12,5 +12,9 @@ export async function GET(req: NextRequest) {
       { status: 404, headers: { "Cache-Control": "no-store" } },
     );
   }
+  // ?raw=1 devolve só o token em texto puro: facilita copiar sem as aspas do JSON.
+  if (req.nextUrl.searchParams.get("raw") === "1") {
+    return new NextResponse(rt, { headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } });
+  }
   return NextResponse.json({ refresh_token: rt }, { headers: { "Cache-Control": "no-store" } });
 }
