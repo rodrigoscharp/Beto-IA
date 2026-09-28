@@ -42,12 +42,7 @@ export function googleFetch(token: string, url: string, opts?: RequestInit) {
 // Access token renovado via refresh token: reaproveita por 45 min (o polling de avisos chama a cada 2 min).
 let refreshed: { rt: string; token: string; exp: number } | null = null;
 
-export async function getGoogleToken(req: NextRequest): Promise<string | null> {
-  const at = req.cookies.get("gc_at")?.value;
-  if (at) return at;
-
-  const rt = req.cookies.get("gc_rt")?.value;
-  if (!rt) return null;
+export async function refreshAccessToken(rt: string): Promise<string | null> {
   if (refreshed && refreshed.rt === rt && refreshed.exp > Date.now()) return refreshed.token;
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
@@ -65,4 +60,18 @@ export async function getGoogleToken(req: NextRequest): Promise<string | null> {
   const data = await res.json();
   if (data.access_token) refreshed = { rt, token: data.access_token, exp: Date.now() + 45 * 60 * 1000 };
   return data.access_token ?? null;
+}
+
+export async function getGoogleToken(req: NextRequest): Promise<string | null> {
+  const at = req.cookies.get("gc_at")?.value;
+  if (at) return at;
+
+  const rt = req.cookies.get("gc_rt")?.value;
+  return rt ? refreshAccessToken(rt) : null;
+}
+
+/** Sem navegador (cron de push): usa o refresh token guardado no ambiente. */
+export async function getServerGoogleToken(): Promise<string | null> {
+  const rt = process.env.GOOGLE_REFRESH_TOKEN;
+  return rt ? refreshAccessToken(rt) : null;
 }

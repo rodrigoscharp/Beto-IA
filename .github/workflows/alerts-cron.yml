@@ -1,0 +1,18 @@
+# Dispara a checagem de avisos do Beto (push) a cada ~5 min.
+# O cron da Vercel no plano gratuito só roda 1x por dia; o Actions cobre o intervalo curto.
+name: Beto alerts
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /api/cron/alerts
+        run: |
+          curl -fsS -m 60 -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://betoia.vercel.app/api/cron/alerts

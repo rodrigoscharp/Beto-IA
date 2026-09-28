@@ -5,6 +5,7 @@
   "functions": {
     "app/api/tts/route.ts": { "maxDuration": 60 },
     "app/api/chat/route.ts": { "maxDuration": 60 },
-    "app/api/briefing/route.ts": { "maxDuration": 60 }
+    "app/api/briefing/route.ts": { "maxDuration": 60 },
+    "app/api/cron/alerts/route.ts": { "maxDuration": 30 }
   }
 }

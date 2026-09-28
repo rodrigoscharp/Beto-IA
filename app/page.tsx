@@ -5,6 +5,7 @@ import Orb, { OrbState } from "@/components/Orb";
 import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
+import { usePush } from "@/components/usePush";
 
 /* ══════════════════════════════════════════════════════════════════════════
    Types
@@ -158,6 +159,7 @@ export default function JarvisPage() {
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
   const [audioReady,   setAudioReady]   = useState(false);
   const [theme,        toggleTheme]     = useTheme();
+  const push = usePush();
 
   const mode           = useRef<Mode>("idle");
   const history        = useRef<Msg[]>([]);
@@ -1027,6 +1029,26 @@ export default function JarvisPage() {
       >
         avisos: {alertsOn ? "on" : "off"}
       </button>
+
+      {/* Push com o app fechado — só aparece se o navegador suporta */}
+      {push.supported && (
+        <button
+          className="beto-chrome"
+          onClick={push.toggle}
+          disabled={push.busy}
+          title={push.subscribed ? "Desligar notificações push" : "Receber notificações push com o app fechado"}
+          aria-pressed={push.subscribed}
+          style={{
+            position: "fixed", top: 92, left: 22, zIndex: 10,
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "rgba(var(--fg-rgb),0.14)",
+            fontSize: 10, fontFamily: "monospace",
+            letterSpacing: "0.15em", textTransform: "uppercase",
+          }}
+        >
+          push: {push.subscribed ? "on" : "off"}
+        </button>
+      )}
 
       {/* Audio unlock hint — fades away after first interaction */}
       {!audioReady && (

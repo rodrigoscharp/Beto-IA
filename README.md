@@ -121,6 +121,18 @@ create table jarvis_memories (
 
 A anon key padrão do Supabase já tem permissão de leitura e escrita nessa tabela.
 
+### Push com o app fechado (opcional)
+
+O Beto avisa por push (Mac e celular) o que é importante mesmo sem a aba aberta: email importante, reunião chegando, review pedido e CI/deploy falhando. Hábito, treino e conflitos de agenda ficam só na voz.
+
+1. Rode `supabase/push.sql` no SQL Editor do Supabase (tabelas `push_subscriptions` e `push_seen`).
+2. Variáveis na Vercel: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (gere com `npx web-push generate-vapid-keys`), `CRON_SECRET` e `GOOGLE_REFRESH_TOKEN`.
+   O refresh token sai de `/api/push/google-token` (logado, depois de autorizar o Google em `/api/calendar/login`).
+3. Secret `CRON_SECRET` (mesmo valor) no GitHub: o workflow `.github/workflows/alerts-cron.yml` chama `/api/cron/alerts` a cada 5 min (o cron gratuito da Vercel só roda 1x por dia).
+4. No app, clique em `push: off` para ativar neste aparelho. No iPhone o Beto precisa estar instalado na tela de início.
+
+O cron fica em silêncio das 23h às 7h e envia no máximo 5 avisos por rodada.
+
 ### 4. (Opcional) Configure o Spotify
 
 1. Acesse [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
