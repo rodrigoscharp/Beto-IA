@@ -89,7 +89,7 @@ const FILLERS = [
   "Já te respondo, chefe.",
   "Tô olhando aqui.",
 ];
-const FILLER_CACHE = "beto-fillers-v1";
+const FILLER_CACHE = "beto-fillers-v2";   // v2: regerados na velocidade nova da voz
 const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar mais que isso
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
@@ -501,7 +501,7 @@ export default function JarvisPage() {
       const u   = new SpeechSynthesisUtterance(text);
       const v   = pickVoice();
       if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "pt-BR"; }
-      u.rate    = 0.93; u.pitch = 0.78; u.volume = 1;
+      u.rate    = 0.88; u.pitch = 0.78; u.volume = 1;
       u.onend   = done;
       u.onerror = done;
       synth.speak(u);
