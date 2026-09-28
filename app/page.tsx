@@ -95,6 +95,10 @@ const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar ma
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
 const FOLLOWUP_GAP   = 250;    // respiro entre o fim da voz dele e abrir o microfone (evita ouvir o próprio eco)
 const END_CONVERSATION = /^(valeu|obrigad[oa]|tchau|é isso|só isso|era isso|por hoje é isso|pode parar|pode ficar quieto|fechou|beleza)([\s,.!]+(beto|chefe))?[\s.!]*$/i;
+/* Rede de proteção: o modelo diz que registrou sem ter mandado a tag (nada foi gravado). */
+const CLAIMS_WRITE    = /\b(anotei|anotado|registrei|registrado|lancei|lançado|adicionei|adicionado|coloquei|marquei)\b/i;
+const REGISTER_INTENT = /\b(gast|receb|anot|regist|adicion|coloc|lanc|lanç|marca|cria|bebi|treinei|estudei|paguei|comprei)/i;
+const HAS_TAG         = /\[[A-Z]+:\{/;
 const FILLER_MIN_WORDS = 4;    // comando curto ("pausa", "próxima") não precisa de enrolação
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -964,7 +968,23 @@ export default function JarvisPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
 
-      const rawReply = data.reply as string;
+      let rawReply = data.reply as string;
+
+      // Disse que registrou mas não mandou a tag: nada foi gravado. Pede ao modelo para corrigir uma vez.
+      if (CLAIMS_WRITE.test(rawReply) && !HAS_TAG.test(rawReply) && REGISTER_INTENT.test(text)) {
+        try {
+          const retry = await fetch("/api/chat", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ messages: [
+              ...msgs.slice(-18),
+              { role: "assistant", content: rawReply },
+              { role: "user", content: "[SISTEMA] Você disse que registrou, mas não enviou a tag MYHUB, então NADA foi gravado. Responda de novo: envie a tag [MYHUB:{...}] correta agora, ou pergunte só o que falta. Não diga que anotou sem a tag." },
+            ] }),
+          });
+          if (retry.ok) rawReply = String((await retry.json()).reply ?? rawReply);
+        } catch { /* segue com a resposta original */ }
+      }
       history.current = [...msgs, { role: "assistant", content: rawReply }];
 
       if (fillerTimer) clearTimeout(fillerTimer);

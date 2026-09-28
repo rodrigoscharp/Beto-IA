@@ -1,3 +1,5 @@
+import { normalizarEntrada } from "@/lib/myhub-normalize";
+
 /* Contexto do My Hub (treinos, finanças, metas, estudos…) para o Beto falar sabendo do dia do Rodrigo.
    Só leitura: o My Hub expõe /api/v1/service/beto-contexto protegido por token.
    Sem MYHUB_URL / MYHUB_SERVICE_TOKEN o Beto funciona igual, só sem esse contexto. */
@@ -96,7 +98,9 @@ async function postWrite(path: string, body: unknown): Promise<Response> {
 export async function myHubRegistrar(acao: string, entrada: unknown): Promise<MyHubWriteResult> {
   if (!myHubWriteConfigured()) return { ok: false, erro: "A escrita no My Hub não está configurada." };
   try {
-    const res = await postWrite("beto-acao", { acao, entrada });
+    // MYHUB_DEFAULT_ACCOUNT: conta usada quando ele não diz qual (evita perguntar "Carteira ou PJ?" toda vez).
+    const dados = normalizarEntrada(acao, entrada, { conta: process.env.MYHUB_DEFAULT_ACCOUNT });
+    const res = await postWrite("beto-acao", { acao, entrada: dados });
     if (!res.ok) return { ok: false, erro: `O My Hub respondeu ${res.status}.` };
     const data = (await res.json()) as MyHubWriteResult;
     if (data.ok) invalidateMyHubContext();
@@ -147,9 +151,17 @@ Além de ler, você REGISTRA no My Hub quando o chefe pedir ("gastei 45 no merca
 Ações (campo* = obrigatório):
 ${ctx.acoes}${nomes}
 Regras:
-- Só use a tag quando ele pedir claramente para registrar, anotar, marcar ou criar algo. Conversa e consulta nunca levam tag.
+- Só use a tag quando ele pedir claramente para registrar, anotar, adicionar, lançar, colocar, marcar ou criar algo ("adiciona pra mim que eu gastei…", "coloca aí…", "lança…"). Conversa e consulta nunca levam tag.
+- NUNCA diga que anotou, registrou ou lançou sem enviar a tag: sem ela NADA é gravado no My Hub. Se não der para registrar, diga o que falta.
 - Faltou dado obrigatório (valor, descrição, categoria, qual conta quando há mais de uma)? PERGUNTE antes, em uma frase curta, sem tag. Nunca invente valor nem categoria.
-- Hoje é ${hojeIso || ctx.hoje}. Converta "ontem", "sexta" etc. para YYYY-MM-DD. Valores em reais como número (45.5).
+- Hoje é ${hojeIso || ctx.hoje}. "Hoje" e datas vagas ("essa semana", "hoje cedo", "agora há pouco") → NÃO envie "data" (o sistema usa hoje). Só envie "data" quando ele disser um dia específico ("ontem", "sexta", "dia 15"), em YYYY-MM-DD.
+- Valores em reais como número, sem símbolo: "R$400", "400 reais", "quatrocentos" e "400 conto" viram 400; "45,50" vira 45.5. "Gastei" é despesa; "recebi" é receita.
+- Escolha a categoria mais parecida da lista de nomes; a descrição pode ser curta (ex.: "Mercado da semana").
+Exemplos:
+"adiciona pra mim que eu gastei 400 no mercado essa semana" → [MYHUB:{"acao":"registrarTransacao","entrada":{"tipo":"despesa","valorEmReais":400,"descricao":"Mercado da semana","categoria":"Mercado"}}] Anotando.
+"gastei 32,90 de gasolina ontem no cartão PJ" → [MYHUB:{"acao":"registrarTransacao","entrada":{"tipo":"despesa","valorEmReais":32.9,"descricao":"Gasolina","categoria":"Gasolina","conta":"PJ","data":"<ontem em YYYY-MM-DD>"}}] Anotando.
+"recebi 2 mil de freelance" → [MYHUB:{"acao":"registrarTransacao","entrada":{"tipo":"receita","valorEmReais":2000,"descricao":"Freelance","categoria":"Freelance"}}] Anotando.
+"marca que bebi 500 ml de água" → [MYHUB:{"acao":"registrarCheckinHabito","entrada":{"habito":"Beber água","quantidade":500}}] Anotando.
 - Valor acima de mil reais: repita o valor e peça confirmação antes de registrar.
 - Se ele não disser a conta, use a conta padrão que constar nas suas memórias sobre ele; sem essa memória e havendo mais de uma conta, pergunte qual.
 - Uma ação por resposta. Se ele pedir várias, registre a primeira e diga que já faz a próxima.
