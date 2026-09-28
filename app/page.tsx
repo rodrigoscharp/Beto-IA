@@ -89,6 +89,29 @@ const FILLERS = [
   "Já te respondo, chefe.",
   "Tô olhando aqui.",
 ];
+/* Saudações puras ("bom dia", "oi", "tudo bem?") o Beto responde na hora, sem modelo e sem filler:
+   as respostas são áudio pré-gerado guardado no navegador. Qualquer coisa a mais na frase vai para o modelo. */
+const GREETINGS = {
+  bomdia:  ["Bom dia, chefe! Quer que eu passe o briefing do dia?", "Bom dia, chefe! Bora pra mais um dia. Quer o briefing?"],
+  boatarde:["Boa tarde, chefe! No que posso ajudar?", "Boa tarde, chefe! Diga aí."],
+  boanoite:["Boa noite, chefe! Como posso ajudar?", "Boa noite, chefe! Tô por aqui."],
+  oi:      ["E aí, chefe! Tô na área. O que manda?", "Fala, chefe! Pode falar.", "Opa, chefe! Diga aí."],
+  tudobem: ["Tudo certo por aqui, chefe! E você, como tá?", "Tranquilo, chefe! E contigo?"],
+} as const;
+type GreetingKind = keyof typeof GREETINGS;
+
+function greetingKind(text: string): GreetingKind | null {
+  const s = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z\s]/g, " ")
+    .replace(/\b(beto|chefe|hey)\b/g, " ").replace(/\s+/g, " ").trim();
+  if (/^bom dia( tudo (bem|bom)| como vai)?$/.test(s))                          return "bomdia";
+  if (/^boa tarde( tudo (bem|bom)| como vai)?$/.test(s))                        return "boatarde";
+  if (/^boa noite( tudo (bem|bom)| como vai)?$/.test(s))                        return "boanoite";
+  if (/^(oi|oie|ola|opa|salve|fala|eae|e ai|fala ai|ei)( tudo (bem|bom))?$/.test(s)) return "oi";
+  if (/^(tudo (bem|bom|certo)|como vai|como voce esta|firmeza)$/.test(s))       return "tudobem";
+  return null;
+}
+
+const GREETING_PHRASES: string[] = Object.values(GREETINGS).flatMap(v => [...v]);
 const FILLER_CACHE = "beto-fillers-v2";   // v2: regerados na velocidade nova da voz
 const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começar a tocar a resposta
 const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar mais que isso
@@ -194,6 +217,7 @@ export default function JarvisPage() {
   const fillerEnd      = useRef<(() => void) | null>(null);
   const fillerDone     = useRef<Promise<void> | null>(null);
   const fillerLast     = useRef(-1);
+  const cachedAudio    = useRef(new Map<string, string>());   // frase pré-gerada -> blob URL
   const musicPlaying   = useRef(false);
   const lastUndo       = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);
   const undoHinted     = useRef(false);
@@ -367,22 +391,44 @@ export default function JarvisPage() {
     if (typeof caches === "undefined") return;
     try {
       const cache = await caches.open(FILLER_CACHE);
-      for (const text of FILLERS) {
+      for (const text of [...FILLERS, ...GREETING_PHRASES]) {
+        const isGreeting = GREETING_PHRASES.includes(text);
         const key = `/__filler/${encodeURIComponent(text)}`;
         let res = await cache.match(key);
         if (!res) {
           const r = await fetch("/api/tts", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ text }),
+            // saudação tem silêncio na frente (o áudio do aparelho acorda); filler não, para entrar seco e rápido
+            body:    JSON.stringify(isGreeting ? { text, lead: true } : { text }),
           });
           if (!r.ok) continue;
           await cache.put(key, r.clone());
           res = r;
         }
-        fillerUrls.current.push(URL.createObjectURL(await res.blob()));
+        const url = URL.createObjectURL(await res.blob());
+        cachedAudio.current.set(text, url);
+        if (!isGreeting) fillerUrls.current.push(url);
       }
-    } catch { /* sem filler: o Beto só responde um pouco mais seco */ }
+    } catch { /* sem cache: o Beto só responde pelo caminho normal */ }
+  }
+
+  /** Toca uma frase pré-gerada na hora. Devolve false se ainda não está no cache (aí cai no TTS normal). */
+  function speakCached(text: string, onDone: () => void): boolean {
+    const url = cachedAudio.current.get(text);
+    if (!url || !audioUnlocked.current) return false;
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+    window.speechSynthesis?.cancel();
+    setMode("speaking");
+    setCaption(text);
+
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    const finish = () => { audioRef.current = null; setCaption(""); onDone(); };
+    audio.onended = finish;
+    audio.onerror = finish;
+    audio.play().catch(finish);
+    return true;
   }
 
   function playFiller() {
@@ -930,6 +976,8 @@ export default function JarvisPage() {
           try { rec.abort(); } catch { /* ok */ }
           wakeRec.current = null;
           clearRestartTimer();
+          // "Bom dia, Beto": a saudação veio junto com o nome; responde direto em vez de abrir o microfone e ficar esperando
+          if (greetingKind(t)) { sendToJarvis(t); return; }
           restartTimer.current = setTimeout(startActive, 150);
           return;
         }
@@ -963,6 +1011,20 @@ export default function JarvisPage() {
   ══════════════════════════════════════════════════════════════════════ */
 
   async function sendToJarvis(text: string) {
+    // Saudação pura: responde direto, sem "deixa eu pensar" e sem esperar o modelo.
+    const greeting = greetingKind(text);
+    if (greeting) {
+      const options = GREETINGS[greeting];
+      const reply   = options[Math.floor(Math.random() * options.length)]!;
+      history.current = [...history.current, { role: "user", content: text }, { role: "assistant", content: reply }];
+      const after = () => {
+        if (!musicPlaying.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
+        else { setMode("wake"); setTimeout(startWake, 300); }
+      };
+      if (!speakCached(reply, after)) speak(reply, after);
+      return;
+    }
+
     setMode("thinking");
     const msgs: Msg[] = [...history.current, { role: "user", content: text }];
     history.current   = msgs;
