@@ -10,6 +10,8 @@ export interface Alert {
   priority: 0 | 1;
   /** Epoch ms depois do qual o aviso não vale mais (ex.: reunião que já começou). */
   until:    number;
+  /** Só avisos de email: permite "lê esse email" logo depois do aviso. */
+  email?:   { id: string; sender: string; subject: string };
 }
 
 export interface Collected {

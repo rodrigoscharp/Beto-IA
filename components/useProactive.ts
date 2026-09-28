@@ -25,7 +25,7 @@ interface Opts {
   /** True quando o Beto está ocioso e o áudio já foi liberado pelo usuário. */
   canSpeak: () => boolean;
   /** Fala o texto e chama onDone ao terminar. */
-  announce: (text: string, onDone: () => void) => void;
+  announce: (text: string, onDone: () => void, alerts: Alert[]) => void;
 }
 
 /**
@@ -86,7 +86,7 @@ export function useProactive({ canSpeak, announce }: Opts): [boolean, () => void
     queue.current.sort((a, b) => b.priority - a.priority);
     const batch = queue.current.splice(0, MAX_JOIN);
     lastSpoke.current = Date.now();
-    fns.current.announce(batch.map(a => a.text).join(" Além disso, "), () => { lastSpoke.current = Date.now(); });
+    fns.current.announce(batch.map(a => a.text).join(" Além disso, "), () => { lastSpoke.current = Date.now(); }, batch);
   }, []);
 
   useEffect(() => {

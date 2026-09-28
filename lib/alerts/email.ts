@@ -67,7 +67,11 @@ Responda APENAS um JSON: [{"id":"...","importante":true|false,"urgente":true|fal
     const v = byId.get(id);
     if (!v) continue; // sem veredito: tenta de novo no próximo poll
     if (v.importante && v.aviso) {
-      alerts.push({ id: `email:${id}`, source: "email", text: v.aviso, priority: v.urgente ? 1 : 0, until: Date.now() + 12 * HOUR_MS });
+      const d = details.find(x => x.id === id);
+      alerts.push({
+        id: `email:${id}`, source: "email", text: v.aviso, priority: v.urgente ? 1 : 0, until: Date.now() + 12 * HOUR_MS,
+        email: { id, sender: d ? extractSender(gmailHeader(d, "From")) : "", subject: d ? gmailHeader(d, "Subject") : "" },
+      });
     } else {
       mark.push(`email:${id}`);
     }

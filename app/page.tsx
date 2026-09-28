@@ -6,6 +6,7 @@ import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
 import { usePush } from "@/components/usePush";
+import { resolveEmailRef, type ListedEmail } from "@/lib/gmail-text";
 
 /* ══════════════════════════════════════════════════════════════════════════
    Types
@@ -51,7 +52,7 @@ interface Msg            { role: "user" | "assistant"; content: string }
 interface SpotifyAction  { action: string; query?: string; level?: number }
 interface CalendarAction { action: string; title?: string; date?: string; time?: string; duration?: number; query?: string }
 
-interface GmailAction    { action: string; days?: number }
+interface GmailAction    { action: string; days?: number; ref?: string }
 interface GithubAction   { action: string; repo?: string }
 interface TimerAction    { action: string; minutes?: number; label?: string }
 interface MemoryAction   { action: string; content?: string; category?: string }
@@ -191,12 +192,16 @@ export default function JarvisPage() {
   const musicPlaying   = useRef(false);
   const lastUndo       = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);
   const undoHinted     = useRef(false);
+  const lastEmails     = useRef<ListedEmail[]>([]);
 
   /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
 
   const [alertsOn, toggleAlerts] = useProactive({
     canSpeak: () => mode.current === "wake" && audioUnlocked.current,
-    announce: (text, onDone) => {
+    announce: (text, onDone, alerts) => {
+      // "lê esse email" logo depois do aviso: o email avisado passa a ser o primeiro da lista
+      const avisados = alerts.flatMap(a => (a.email ? [{ id: a.email.id, sender: a.email.sender, subject: a.email.subject }] : []));
+      if (avisados.length) lastEmails.current = [...avisados, ...lastEmails.current].slice(0, 10);
       // Para o ouvinte do wake word antes de falar: senão ele escuta a própria voz do Beto.
       try { wakeRec.current?.abort(); } catch { /* ok */ }
       wakeRec.current = null;
@@ -655,6 +660,21 @@ export default function JarvisPage() {
 
   async function execGmail(action: GmailAction): Promise<string> {
     try {
+      // Ler UM email a fundo: "lê o segundo", "lê o da Maria", "lê esse"
+      if (action.action === "read") {
+        const ref = (action.ref ?? "").trim();
+        const hit = resolveEmailRef(ref, lastEmails.current);
+        if (!hit && !ref) return "Qual email você quer que eu leia, chefe?";
+        const params = new URLSearchParams(hit ? { id: hit.id } : { q: ref });
+        const res = await fetch(`/api/gmail/read?${params}`);
+        if (res.status === 401) {
+          window.location.href = "/api/calendar/login";
+          return "Redirecionando para autorizar.";
+        }
+        const data = await res.json();
+        return data.text ?? data.error ?? "Não consegui ler o email.";
+      }
+
       const params = new URLSearchParams();
       if (action.days) params.set("days", String(action.days));
       const res = await fetch(`/api/gmail/summary?${params}`);
@@ -663,6 +683,7 @@ export default function JarvisPage() {
         return "Redirecionando para autorizar.";
       }
       const data = await res.json();
+      if (Array.isArray(data.emails)) lastEmails.current = data.emails;
       return data.summary ?? data.error ?? "Não consegui verificar os emails.";
     } catch { return "Erro ao acessar o Gmail."; }
   }
