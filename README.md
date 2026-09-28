@@ -4,7 +4,7 @@
 
 # BETO IA
 
-**Seu parceiro nordestino de inteligência artificial**
+**Seu brother e sócio de inteligência artificial**
 
 Assistente pessoal de voz e texto, sci-fi, com simpatia e sotaque, rodando no seu próprio servidor.
 
@@ -34,7 +34,7 @@ A interface é uma tela escura com um orbe 3D animado que reage ao que você est
 
 **Voz e conversa**
 - Ativação por palavra-chave: "Beto", "Ei Beto", "Olá Beto"
-- Personalidade nordestina, engraçada e parceira — fala com gírias tipo "oxente", "vixe", "arretado", "visse"
+- Personalidade de brother e empresário parceiro — direto no trabalho, leve na resenha, e sabe quando cada tom cabe
 - Reconhecimento em português via Web Speech API (Chrome/Edge)
 - Síntese de voz com ElevenLabs (voz Adam, grave) — fallback para Speech Synthesis nativa
 - Histórico de contexto das últimas 20 mensagens por sessão
