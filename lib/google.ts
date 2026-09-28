@@ -20,6 +20,12 @@ export function gmailHeader(msg: GmailMessage, name: string): string {
   );
 }
 
+export function extractSender(from: string): string {
+  const named = from.match(/^"?([^"<]+)"?\s*</);
+  if (named) return named[1].trim();
+  return from.split("@")[0] || from;
+}
+
 export function googleFetch(token: string, url: string, opts?: RequestInit) {
   return fetch(url, {
     ...opts,
@@ -33,12 +39,16 @@ export function googleFetch(token: string, url: string, opts?: RequestInit) {
 
 /* ── Token: reads gc_at cookie, refreshes via gc_rt if needed ───────────── */
 
+// Access token renovado via refresh token: reaproveita por 45 min (o polling de avisos chama a cada 2 min).
+let refreshed: { rt: string; token: string; exp: number } | null = null;
+
 export async function getGoogleToken(req: NextRequest): Promise<string | null> {
   const at = req.cookies.get("gc_at")?.value;
   if (at) return at;
 
   const rt = req.cookies.get("gc_rt")?.value;
   if (!rt) return null;
+  if (refreshed && refreshed.rt === rt && refreshed.exp > Date.now()) return refreshed.token;
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method:  "POST",
@@ -53,5 +63,6 @@ export async function getGoogleToken(req: NextRequest): Promise<string | null> {
 
   if (!res.ok) return null;
   const data = await res.json();
+  if (data.access_token) refreshed = { rt, token: data.access_token, exp: Date.now() + 45 * 60 * 1000 };
   return data.access_token ?? null;
 }

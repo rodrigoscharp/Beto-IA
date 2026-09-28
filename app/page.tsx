@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
 import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
+import { useProactive } from "@/components/useProactive";
 
 /* ══════════════════════════════════════════════════════════════════════════
    Types
@@ -157,6 +158,19 @@ export default function JarvisPage() {
   const wakeBlocked    = useRef(false);
   const wakeFails      = useRef(0);
   const wakeLock       = useRef<{ release(): Promise<void> } | null>(null);
+
+  /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
+
+  const [alertsOn, toggleAlerts] = useProactive({
+    canSpeak: () => mode.current === "wake" && audioUnlocked.current,
+    announce: (text, onDone) => {
+      // Para o ouvinte do wake word antes de falar: senão ele escuta a própria voz do Beto.
+      try { wakeRec.current?.abort(); } catch { /* ok */ }
+      wakeRec.current = null;
+      clearRestartTimer();
+      speak(sanitize(text), () => { onDone(); setMode("wake"); setTimeout(startWake, 300); });
+    },
+  });
 
   /* ── Lifecycle: auto-start on mount ─────────────────────────────────── */
 
@@ -908,6 +922,23 @@ export default function JarvisPage() {
         }}
       >
         {theme === "dark" ? "modo claro" : "modo escuro"}
+      </button>
+
+      {/* Avisos proativos on/off — top left under theme toggle */}
+      <button
+        className="beto-chrome"
+        onClick={toggleAlerts}
+        title={alertsOn ? "Desligar avisos automáticos" : "Ligar avisos automáticos"}
+        aria-pressed={alertsOn}
+        style={{
+          position: "fixed", top: 74, left: 22, zIndex: 10,
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          color: "rgba(var(--fg-rgb),0.14)",
+          fontSize: 10, fontFamily: "monospace",
+          letterSpacing: "0.15em", textTransform: "uppercase",
+        }}
+      >
+        avisos: {alertsOn ? "on" : "off"}
       </button>
 
       {/* Audio unlock hint — fades away after first interaction */}
