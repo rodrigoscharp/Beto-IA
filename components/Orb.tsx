@@ -10,6 +10,7 @@ interface OrbProps { state: OrbState; onClick: () => void; }
 const N     = 320;   // particle count
 const R     = 162;   // sphere radius (px)
 const PERSP = 520;   // perspective depth
+const REF   = 620;   // min(viewport w,h) at which the orb is drawn at full size
 
 /* ── Fibonacci sphere — evenly distributes N points on unit sphere ───────── */
 
@@ -70,6 +71,7 @@ export default function Orb({ state, onClick }: OrbProps) {
   const prevRef      = useRef<OrbState>(state);
   const ptsRef       = useRef<P[]>([]);
   const dimRef       = useRef({ w: 0, h: 0 });
+  const kRef         = useRef(1);    // size factor: shrinks the orb on small viewports
   const tRef         = useRef(0);    // gather: 0 = scattered, 1 = sphere
   const phRef        = useRef(0);    // global phase
   const rotYRef      = useRef(0);    // Y spin angle
@@ -86,6 +88,7 @@ export default function Orb({ state, onClick }: OrbProps) {
       const w = window.innerWidth, h = window.innerHeight;
       canvas.width = w; canvas.height = h;
       dimRef.current = { w, h };
+      kRef.current = Math.max(0.28, Math.min(1, Math.min(w, h) / REF));
       if (!ptsRef.current.length) ptsRef.current = mkParticles(w, h);
     };
     resize();
@@ -95,6 +98,7 @@ export default function Orb({ state, onClick }: OrbProps) {
       const s    = stateRef.current;
       const prev = prevRef.current;
       const { w, h } = dimRef.current;
+      const k  = kRef.current;
       const CX = w / 2, CY = h / 2;
       const pts = ptsRef.current;
 
@@ -128,7 +132,7 @@ export default function Orb({ state, onClick }: OrbProps) {
       const pulse = s === "speaking"
         ? 0.5 + 0.5 * Math.sin(ph)   // one smooth slow wave, 0..1
         : 0;
-      const curR = R * (1 + pulse * 0.06);
+      const curR = R * k * (1 + pulse * 0.06);
 
       /* ── Color ── */
       const hue = s === "thinking" ? 265 : s === "listening" ? 188 : s === "speaking" ? 205 : 215;
@@ -184,6 +188,7 @@ export default function Orb({ state, onClick }: OrbProps) {
       for (const [p] of sorted) {
         // Perspective scale: closer (higher z) = larger
         const scale = PERSP / (PERSP + p.z);
+        const pk    = 0.55 + 0.45 * k; // particles shrink less than the orb
         const sx    = CX + p.x * scale;
         const sy    = CY + p.y * scale;
 
@@ -193,7 +198,7 @@ export default function Orb({ state, onClick }: OrbProps) {
         const twinkle = 0.45 + 0.55 * Math.sin(p.phase);
         const bright  = 1 + depth * 1.6 * t;
         const alpha   = Math.min(0.96, p.alpha * twinkle * bright);
-        const radius  = Math.max(0.25, p.size * scale * (1 + depth * 0.6 * t));
+        const radius  = Math.max(0.25, p.size * scale * pk * (1 + depth * 0.6 * t));
         const lightness = 65 + depth * 28;
 
         ctx.beginPath();
@@ -206,7 +211,7 @@ export default function Orb({ state, onClick }: OrbProps) {
 
       /* ── Central glow ── */
       if (t > 0.04) {
-        const ambR = (s === "speaking" ? 215 + pulse * 22 : 215) * t;
+        const ambR = (s === "speaking" ? 215 + pulse * 22 : 215) * k * t;
         const ambA = t * (s === "speaking" ? 0.032 + pulse * 0.012 : 0.045);
         const ga   = ctx.createRadialGradient(CX, CY, 0, CX, CY, ambR);
         ga.addColorStop(0,   `hsla(${hue},85%,65%,0)`);
@@ -216,7 +221,7 @@ export default function Orb({ state, onClick }: OrbProps) {
         ctx.beginPath(); ctx.arc(CX, CY, ambR, 0, Math.PI * 2);
         ctx.fillStyle = ga; ctx.fill();
 
-        const coreR = (s === "speaking" ? 18 + pulse * 5 : 18 + 4 * Math.sin(ph * 0.75)) * t;
+        const coreR = (s === "speaking" ? 18 + pulse * 5 : 18 + 4 * Math.sin(ph * 0.75)) * k * t;
         const coreA = t * (s === "speaking" ? 0.38 + pulse * 0.08 : 0.52);
         const gc    = ctx.createRadialGradient(CX, CY, 0, CX, CY, coreR * 2.8);
         gc.addColorStop(0,    `rgba(255,255,255,${coreA})`);
@@ -274,9 +279,9 @@ export default function Orb({ state, onClick }: OrbProps) {
       /* ── Wake: subtle click hint ── */
       if (s === "wake" && t < 0.08) {
         const p2 = 0.5 + 0.5 * Math.sin(ph * 0.32);
-        ctx.beginPath(); ctx.arc(CX, CY, 7 + p2 * 3, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(CX, CY, (7 + p2 * 3) * k, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(255,255,255,${0.06 + p2 * 0.04})`; ctx.fill();
-        ctx.beginPath(); ctx.arc(CX, CY, 24 + p2 * 4, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(CX, CY, (24 + p2 * 4) * k, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(255,255,255,${0.03 + p2 * 0.02})`; ctx.lineWidth = 0.5; ctx.stroke();
       }
 
