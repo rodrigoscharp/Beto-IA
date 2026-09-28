@@ -8,7 +8,7 @@ const SPEED = Math.min(1.2, Math.max(0.7, Number(process.env.ELEVENLABS_SPEED) |
 
 export async function POST(req: NextRequest) {
   try {
-    const { text } = await req.json();
+    const { text, lead } = await req.json();
 
     if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "text é obrigatório." }, { status: 400 });
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
           Accept: "audio/mpeg",
         },
         body: JSON.stringify({
-          text,
+          // `lead`: meio segundo de silêncio antes da fala, para o áudio do aparelho "acordar" sem comer o início da frase.
+          text: lead ? `<break time="0.4s" /> ${text}` : text,
           model_id: "eleven_turbo_v2_5",
           language_code: "pt",   // fixa o idioma: sem isso o modelo às vezes "adivinha" e enrola a pronúncia
           voice_settings: {

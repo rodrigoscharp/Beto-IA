@@ -90,6 +90,7 @@ const FILLERS = [
   "Tô olhando aqui.",
 ];
 const FILLER_CACHE = "beto-fillers-v2";   // v2: regerados na velocidade nova da voz
+const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começar a tocar a resposta
 const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar mais que isso
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
@@ -487,7 +488,8 @@ export default function JarvisPage() {
 
   /* ── TTS: ElevenLabs with MediaSource streaming, synth fallback ──────── */
 
-  function speak(text: string, onDone: () => void) {
+  /** `gate`: só começa a tocar depois dele (ex.: o filler terminar). O áudio já vai sendo buscado e bufferizado enquanto isso. */
+  function speak(text: string, onDone: () => void, gate: Promise<void> = Promise.resolve()) {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     window.speechSynthesis?.cancel();
     setMode("speaking");
@@ -504,13 +506,13 @@ export default function JarvisPage() {
       u.rate    = 0.88; u.pitch = 0.78; u.volume = 1;
       u.onend   = done;
       u.onerror = done;
-      synth.speak(u);
+      gate.then(() => synth.speak(u));
     };
 
     fetch("/api/tts", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ text }),
+      body:    JSON.stringify({ text, lead: true }),
     })
       .then(res => {
         if (!res.ok || !res.body) throw new Error("TTS falhou");
@@ -538,18 +540,29 @@ export default function JarvisPage() {
             const waitUpdate = () =>
               new Promise<void>(r => sb.addEventListener("updateend", () => r(), { once: true }));
 
-            let playing = false;
+            // Só começa a tocar com um pouco de áudio já bufferizado (ou no fim do stream, se for curto) e depois do gate:
+            // começar no primeiro pedacinho fazia o início da fala sair cortado.
+            let started = false;
+            const start = async () => {
+              if (started) return;
+              started = true;
+              await gate;
+              audio.play().catch(() => {});
+            };
+            const buffered = () => audio.buffered.length ? audio.buffered.end(audio.buffered.length - 1) - audio.currentTime : 0;
+
             try {
               for (;;) {
                 const { done: streamDone, value } = await reader.read();
                 if (streamDone) {
                   if (sb.updating) await waitUpdate();
                   if (ms.readyState === "open") ms.endOfStream();
+                  void start();
                   return;
                 }
                 if (sb.updating) await waitUpdate();
                 sb.appendBuffer(value);
-                if (!playing) { playing = true; audio.play().catch(() => {}); }
+                if (!started && buffered() >= PREBUFFER_S) void start();
               }
             } catch { cleanup(); }
           });
@@ -563,7 +576,7 @@ export default function JarvisPage() {
               const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
               audio.onended = cleanup;
               audio.onerror = cleanup;
-              audio.play().catch(done);
+              gate.then(() => audio.play()).catch(done);
             })
             .catch(synthFallback);
         }
@@ -991,14 +1004,14 @@ export default function JarvisPage() {
       // Respostas de conversa/consulta continuam ouvindo; comando de música, timer e memória voltam ao wake word
       // (com música tocando o microfone aberto captaria a letra como se fosse você).
       const say  = async (t: string, followUp = false) => {
-        await waitFiller();
+        // O áudio da resposta já é buscado agora, em paralelo ao filler; só começa a tocar quando o filler acaba.
         speak(sanitize(t), () => {
           if (followUp && !musicPlaying.current && getSR()) {
             setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
           } else {
             setMode("wake"); setTimeout(startWake, 300);
           }
-        });
+        }, waitFiller());
       };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
