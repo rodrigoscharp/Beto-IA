@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
 import MiniPlayer from "@/components/MiniPlayer";
+import { useTheme } from "@/components/useTheme";
 
 /* ══════════════════════════════════════════════════════════════════════════
    Types
@@ -139,6 +140,7 @@ export default function JarvisPage() {
   const [caption,      setCaption]      = useState("");
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
   const [audioReady,   setAudioReady]   = useState(false);
+  const [theme,        toggleTheme]     = useTheme();
 
   const mode           = useRef<Mode>("idle");
   const history        = useRef<Msg[]>([]);
@@ -859,15 +861,15 @@ export default function JarvisPage() {
   /* ── Render ──────────────────────────────────────────────────────────── */
 
   return (
-    <main style={{ position: "fixed", inset: 0, background: "#000" }}>
-      <Orb state={orbState} onClick={handleClick} />
+    <main style={{ position: "fixed", inset: 0, background: "var(--bg)" }}>
+      <Orb state={orbState} onClick={handleClick} theme={theme} />
 
       <MiniPlayer onCommand={handleSpotifyCommand} />
 
       {/* Status badge — top left */}
-      <div style={{
+      <div className="beto-chrome" style={{
         position: "fixed", top: 18, left: 22, zIndex: 10,
-        color: "rgba(255,255,255,0.18)",
+        color: "rgba(var(--fg-rgb),0.18)",
         fontSize: 11, fontFamily: "monospace",
         letterSpacing: "0.15em", textTransform: "uppercase",
         pointerEvents: "none", userSelect: "none",
@@ -877,12 +879,13 @@ export default function JarvisPage() {
 
       {/* Logout — top left under badge */}
       <button
+        className="beto-chrome"
         onClick={logout}
         title="Sair"
         style={{
           position: "fixed", top: 38, left: 22, zIndex: 10,
           background: "none", border: "none", padding: 0, cursor: "pointer",
-          color: "rgba(255,255,255,0.14)",
+          color: "rgba(var(--fg-rgb),0.14)",
           fontSize: 10, fontFamily: "monospace",
           letterSpacing: "0.15em", textTransform: "uppercase",
         }}
@@ -890,12 +893,29 @@ export default function JarvisPage() {
         sair
       </button>
 
+      {/* Theme toggle — top left under logout */}
+      <button
+        className="beto-chrome"
+        onClick={toggleTheme}
+        title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+        aria-label={theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"}
+        style={{
+          position: "fixed", top: 56, left: 22, zIndex: 10,
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          color: "rgba(var(--fg-rgb),0.14)",
+          fontSize: 10, fontFamily: "monospace",
+          letterSpacing: "0.15em", textTransform: "uppercase",
+        }}
+      >
+        {theme === "dark" ? "modo claro" : "modo escuro"}
+      </button>
+
       {/* Audio unlock hint — fades away after first interaction */}
       {!audioReady && (
-        <div style={{
+        <div className="beto-chrome" style={{
           position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
           zIndex: 20, pointerEvents: "none", userSelect: "none",
-          color: "rgba(255,255,255,0.22)",
+          color: "rgba(var(--fg-rgb),0.22)",
           fontSize: 11, fontFamily: "monospace", letterSpacing: "0.12em",
           textTransform: "uppercase",
           animation: "fadeUp 0.6s ease both",
@@ -906,17 +926,17 @@ export default function JarvisPage() {
 
       {/* Countdown timer — top right */}
       {timerDisplay && (
-        <div style={{
+        <div className="beto-chrome" style={{
           position: "fixed", top: 18, right: 22, zIndex: 10,
           textAlign: "right", pointerEvents: "none", userSelect: "none",
         }}>
           <div style={{
             fontSize: 10, fontFamily: "monospace", letterSpacing: "0.12em",
-            color: "rgba(255,255,255,0.35)", textTransform: "uppercase", marginBottom: 3,
+            color: "rgba(var(--fg-rgb),0.35)", textTransform: "uppercase", marginBottom: 3,
           }}>
             {timerDisplay.label}
           </div>
-          <div style={{ fontSize: 22, fontFamily: "monospace", fontWeight: 300, letterSpacing: "0.06em", color: "rgba(255,255,255,0.75)" }}>
+          <div style={{ fontSize: 22, fontFamily: "monospace", fontWeight: 300, letterSpacing: "0.06em", color: "rgba(var(--fg-rgb),0.75)" }}>
             {formatTime(timerDisplay.timeLeft)}
           </div>
         </div>
@@ -924,19 +944,19 @@ export default function JarvisPage() {
 
       {/* Caption — bottom center */}
       {caption && (
-        <div style={{
+        <div className="beto-chrome" style={{
           position: "fixed", bottom: 52, left: "50%", zIndex: 10,
           transform: "translateX(-50%)",
           maxWidth: "min(660px, 86vw)",
           textAlign: "center",
           padding: "10px 24px", borderRadius: 6,
-          background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)",
-          color: "#fff",
+          background: "rgba(var(--bg-rgb),0.55)", backdropFilter: "blur(8px)",
+          color: "rgb(var(--fg-rgb))",
           fontSize: "clamp(15px, 2vw, 19px)",
           fontFamily: "'Segoe UI', system-ui, sans-serif",
           fontWeight: 400, lineHeight: 1.55, letterSpacing: "0.01em",
-          textShadow: "0 1px 8px rgba(0,0,0,0.9)",
-          border: "1px solid rgba(255,255,255,0.07)",
+          textShadow: "0 1px 8px rgba(var(--bg-rgb),0.9)",
+          border: "1px solid rgba(var(--fg-rgb),0.07)",
           animation: "fadeUp 0.2s ease",
           pointerEvents: "none",
         }}>

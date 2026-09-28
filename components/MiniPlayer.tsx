@@ -109,7 +109,7 @@ export default function MiniPlayer({ onCommand }: Props) {
         .mp-track-inner:hover { animation-play-state: paused; }
       `}</style>
 
-      <div style={{
+      <div className="beto-chrome" style={{
         position:       "fixed",
         bottom:         28,
         right:          28,
@@ -122,10 +122,10 @@ export default function MiniPlayer({ onCommand }: Props) {
         {/* Outer frame */}
         <div style={{
           position:        "relative",
-          background:      "rgba(4, 6, 12, 0.88)",
+          background:      "rgba(var(--panel-rgb), 0.88)",
           backdropFilter:  "blur(24px) saturate(1.4)",
-          border:          "1px solid rgba(255,255,255,0.08)",
-          boxShadow:       "0 0 0 1px rgba(255,255,255,0.03) inset, 0 24px 64px rgba(0,0,0,0.7), 0 0 40px rgba(100,160,255,0.04)",
+          border:          "1px solid rgba(var(--fg-rgb),0.08)",
+          boxShadow:       "0 0 0 1px rgba(var(--fg-rgb),0.03) inset, 0 24px 64px rgba(var(--shadow-rgb),0.7), 0 0 40px rgba(var(--accent-rgb),0.04)",
           overflow:        "hidden",
         }}>
 
@@ -136,15 +136,15 @@ export default function MiniPlayer({ onCommand }: Props) {
             left:       0,
             right:      0,
             height:     1,
-            background: "linear-gradient(90deg, transparent, rgba(120,180,255,0.5) 40%, rgba(120,180,255,0.5) 60%, transparent)",
+            background: "linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.5) 40%, rgba(var(--accent-rgb),0.5) 60%, transparent)",
           }} />
 
           {/* Corner marks */}
           {[
-            { top: 0,    left:  0,    borderTop: "1px solid rgba(255,255,255,0.22)", borderLeft:  "1px solid rgba(255,255,255,0.22)" },
-            { top: 0,    right: 0,    borderTop: "1px solid rgba(255,255,255,0.22)", borderRight: "1px solid rgba(255,255,255,0.22)" },
-            { bottom: 0, left:  0,    borderBottom: "1px solid rgba(255,255,255,0.22)", borderLeft:  "1px solid rgba(255,255,255,0.22)" },
-            { bottom: 0, right: 0,    borderBottom: "1px solid rgba(255,255,255,0.22)", borderRight: "1px solid rgba(255,255,255,0.22)" },
+            { top: 0,    left:  0,    borderTop: "1px solid rgba(var(--fg-rgb),0.22)", borderLeft:  "1px solid rgba(var(--fg-rgb),0.22)" },
+            { top: 0,    right: 0,    borderTop: "1px solid rgba(var(--fg-rgb),0.22)", borderRight: "1px solid rgba(var(--fg-rgb),0.22)" },
+            { bottom: 0, left:  0,    borderBottom: "1px solid rgba(var(--fg-rgb),0.22)", borderLeft:  "1px solid rgba(var(--fg-rgb),0.22)" },
+            { bottom: 0, right: 0,    borderBottom: "1px solid rgba(var(--fg-rgb),0.22)", borderRight: "1px solid rgba(var(--fg-rgb),0.22)" },
           ].map((style, i) => (
             <div key={i} style={{ position: "absolute", width: 10, height: 10, ...style }} />
           ))}
@@ -162,7 +162,7 @@ export default function MiniPlayer({ onCommand }: Props) {
               <div style={{
                 fontSize:      9,
                 letterSpacing: "0.2em",
-                color:         "rgba(100,160,255,0.6)",
+                color:         "rgba(var(--accent-rgb),0.6)",
                 textTransform: "uppercase",
               }}>
                 ◈ AUDIO
@@ -177,11 +177,11 @@ export default function MiniPlayer({ onCommand }: Props) {
                   lineHeight:    1,
                   display:       "flex",
                   alignItems:    "center",
-                  color:         "rgba(255,255,255,0.18)",
+                  color:         "rgba(var(--fg-rgb),0.18)",
                   transition:    "color 0.15s",
                 }}
-                onMouseEnter={e => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.18)")}
+                onMouseEnter={e => (e.currentTarget.style.color = "rgba(var(--fg-rgb),0.5)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "rgba(var(--fg-rgb),0.18)")}
               >
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                   <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" strokeWidth="1.2"/>
@@ -198,19 +198,19 @@ export default function MiniPlayer({ onCommand }: Props) {
                 height:       44,
                 flexShrink:   0,
                 position:     "relative",
-                border:       "1px solid rgba(255,255,255,0.07)",
+                border:       "1px solid rgba(var(--fg-rgb),0.07)",
                 overflow:     "hidden",
               }}>
                 {info.albumArt
                   ? <img src={info.albumArt} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                   : <div style={{
                       width: "100%", height: "100%",
-                      background: "rgba(255,255,255,0.04)",
+                      background: "rgba(var(--fg-rgb),0.04)",
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
                       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                        <circle cx="9" cy="9" r="5.5" stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
-                        <circle cx="9" cy="9" r="1.5" fill="rgba(255,255,255,0.2)"/>
+                        <circle cx="9" cy="9" r="5.5" stroke="rgba(var(--fg-rgb),0.15)" strokeWidth="1"/>
+                        <circle cx="9" cy="9" r="1.5" fill="rgba(var(--fg-rgb),0.2)"/>
                       </svg>
                     </div>
                 }
@@ -218,7 +218,7 @@ export default function MiniPlayer({ onCommand }: Props) {
                 <div style={{
                   position:   "absolute",
                   inset:      0,
-                  background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%)",
+                  background: "linear-gradient(135deg, rgba(var(--fg-rgb),0.04) 0%, transparent 60%)",
                   pointerEvents: "none",
                 }} />
               </div>
@@ -230,7 +230,7 @@ export default function MiniPlayer({ onCommand }: Props) {
                   <div className="mp-track-inner" style={{
                     fontSize:      12,
                     fontWeight:    500,
-                    color:         "rgba(255,255,255,0.9)",
+                    color:         "rgba(var(--fg-rgb),0.9)",
                     letterSpacing: "0.02em",
                     paddingRight:  32,
                   }}>
@@ -239,7 +239,7 @@ export default function MiniPlayer({ onCommand }: Props) {
                 </div>
                 <div style={{
                   fontSize:      10,
-                  color:         "rgba(255,255,255,0.35)",
+                  color:         "rgba(var(--fg-rgb),0.35)",
                   letterSpacing: "0.04em",
                   marginTop:     3,
                   whiteSpace:    "nowrap",
@@ -256,7 +256,7 @@ export default function MiniPlayer({ onCommand }: Props) {
               <div
                 style={{
                   height:     2,
-                  background: "rgba(255,255,255,0.07)",
+                  background: "rgba(var(--fg-rgb),0.07)",
                   position:   "relative",
                   cursor:     "pointer",
                 }}
@@ -267,7 +267,7 @@ export default function MiniPlayer({ onCommand }: Props) {
                   top:        0,
                   height:     "100%",
                   width:      `${pct}%`,
-                  background: "linear-gradient(90deg, rgba(100,160,255,0.6), rgba(140,200,255,0.9))",
+                  background: "linear-gradient(90deg, rgba(var(--accent-rgb),0.6), rgba(var(--accent2-rgb),0.9))",
                   transition: "width 0.9s linear",
                 }} />
                 {/* Playhead dot */}
@@ -279,8 +279,8 @@ export default function MiniPlayer({ onCommand }: Props) {
                   width:       6,
                   height:      6,
                   borderRadius: "50%",
-                  background:  "rgba(160,210,255,0.95)",
-                  boxShadow:   "0 0 6px rgba(140,200,255,0.6)",
+                  background:  "rgba(var(--accent2-rgb),0.95)",
+                  boxShadow:   "0 0 6px rgba(var(--accent2-rgb),0.6)",
                   transition:  "left 0.9s linear",
                 }} />
               </div>
@@ -289,7 +289,7 @@ export default function MiniPlayer({ onCommand }: Props) {
                 justifyContent: "space-between",
                 marginTop:      6,
                 fontSize:       9,
-                color:          "rgba(255,255,255,0.22)",
+                color:          "rgba(var(--fg-rgb),0.22)",
                 letterSpacing:  "0.08em",
               }}>
                 <span>{fmt(localMs)}</span>
@@ -312,17 +312,17 @@ export default function MiniPlayer({ onCommand }: Props) {
                   onMouseLeave={() => setHover(null)}
                   style={{
                     background:   hover === label
-                      ? primary ? "rgba(100,160,255,0.12)" : "rgba(255,255,255,0.05)"
+                      ? primary ? "rgba(var(--accent-rgb),0.12)" : "rgba(var(--fg-rgb),0.05)"
                       : "none",
                     border:       primary
-                      ? `1px solid ${hover === label ? "rgba(100,160,255,0.3)" : "rgba(255,255,255,0.1)"}`
+                      ? `1px solid ${hover === label ? "rgba(var(--accent-rgb),0.3)" : "rgba(var(--fg-rgb),0.1)"}`
                       : "none",
                     borderRadius: 0,
                     cursor:       "pointer",
                     padding:      primary ? "10px 20px" : "10px 16px",
                     color:        primary
-                      ? hover === label ? "rgba(160,210,255,1)" : "rgba(255,255,255,0.75)"
-                      : hover === label ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.35)",
+                      ? hover === label ? "rgba(var(--accent2-rgb),1)" : "rgba(var(--fg-rgb),0.75)"
+                      : hover === label ? "rgba(var(--fg-rgb),0.75)" : "rgba(var(--fg-rgb),0.35)",
                     display:      "flex",
                     alignItems:   "center",
                     justifyContent: "center",
@@ -345,7 +345,7 @@ export default function MiniPlayer({ onCommand }: Props) {
             left:       "20%",
             right:      "20%",
             height:     1,
-            background: "linear-gradient(90deg, transparent, rgba(100,160,255,0.2), transparent)",
+            background: "linear-gradient(90deg, transparent, rgba(var(--accent-rgb),0.2), transparent)",
           }} />
         </div>
       </div>

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 
 export type OrbState = "wake" | "listening" | "thinking" | "speaking";
-interface OrbProps { state: OrbState; onClick: () => void; }
+interface OrbProps { state: OrbState; onClick: () => void; theme?: "dark" | "light"; }
 
 /* ── Config ──────────────────────────────────────────────────────────────── */
 
@@ -64,10 +64,11 @@ function mkParticles(w: number, h: number): P[] {
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 
-export default function Orb({ state, onClick }: OrbProps) {
+export default function Orb({ state, onClick, theme = "dark" }: OrbProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const frameRef     = useRef(0);
   const stateRef     = useRef(state);
+  const lightRef     = useRef(theme === "light");
   const prevRef      = useRef<OrbState>(state);
   const ptsRef       = useRef<P[]>([]);
   const dimRef       = useRef({ w: 0, h: 0 });
@@ -78,6 +79,7 @@ export default function Orb({ state, onClick }: OrbProps) {
   const rotXRef      = useRef(0);    // X tilt angle
 
   useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { lightRef.current = theme === "light"; }, [theme]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -135,6 +137,7 @@ export default function Orb({ state, onClick }: OrbProps) {
       const curR = R * k * (1 + pulse * 0.06);
 
       /* ── Color ── */
+      const light = lightRef.current;
       const hue = s === "thinking" ? 265 : s === "listening" ? 188 : s === "speaking" ? 205 : 215;
 
       ctx.clearRect(0, 0, w, h);
@@ -199,34 +202,35 @@ export default function Orb({ state, onClick }: OrbProps) {
         const bright  = 1 + depth * 1.6 * t;
         const alpha   = Math.min(0.96, p.alpha * twinkle * bright);
         const radius  = Math.max(0.25, p.size * scale * pk * (1 + depth * 0.6 * t));
-        const lightness = 65 + depth * 28;
+        const lightness = light ? 44 - depth * 18 : 65 + depth * 28;
 
         ctx.beginPath();
         ctx.arc(sx, sy, radius, 0, Math.PI * 2);
         ctx.fillStyle = t > 0.06
-          ? `hsla(${hue},80%,${lightness}%,${alpha})`
-          : `rgba(255,255,255,${alpha * (0.35 + t * 0.65)})`;
+          ? `hsla(${hue},${light ? 85 : 80}%,${lightness}%,${light ? Math.min(0.98, alpha * 1.4) : alpha})`
+          : `rgba(${light ? "30,41,70" : "255,255,255"},${alpha * (0.35 + t * 0.65)})`;
         ctx.fill();
       }
 
       /* ── Central glow ── */
       if (t > 0.04) {
         const ambR = (s === "speaking" ? 215 + pulse * 22 : 215) * k * t;
-        const ambA = t * (s === "speaking" ? 0.032 + pulse * 0.012 : 0.045);
+        const ambA = t * (s === "speaking" ? 0.032 + pulse * 0.012 : 0.045) * (light ? 1.5 : 1);
         const ga   = ctx.createRadialGradient(CX, CY, 0, CX, CY, ambR);
-        ga.addColorStop(0,   `hsla(${hue},85%,65%,0)`);
-        ga.addColorStop(0.4, `hsla(${hue},80%,60%,${ambA * 0.4})`);
-        ga.addColorStop(0.7, `hsla(${hue},75%,55%,${ambA})`);
-        ga.addColorStop(1,   `hsla(${hue},70%,50%,0)`);
+        const gl = light ? -12 : 0;
+        ga.addColorStop(0,   `hsla(${hue},85%,${65 + gl}%,0)`);
+        ga.addColorStop(0.4, `hsla(${hue},80%,${60 + gl}%,${ambA * 0.4})`);
+        ga.addColorStop(0.7, `hsla(${hue},75%,${55 + gl}%,${ambA})`);
+        ga.addColorStop(1,   `hsla(${hue},70%,${50 + gl}%,0)`);
         ctx.beginPath(); ctx.arc(CX, CY, ambR, 0, Math.PI * 2);
         ctx.fillStyle = ga; ctx.fill();
 
         const coreR = (s === "speaking" ? 18 + pulse * 5 : 18 + 4 * Math.sin(ph * 0.75)) * k * t;
         const coreA = t * (s === "speaking" ? 0.38 + pulse * 0.08 : 0.52);
         const gc    = ctx.createRadialGradient(CX, CY, 0, CX, CY, coreR * 2.8);
-        gc.addColorStop(0,    `rgba(255,255,255,${coreA})`);
-        gc.addColorStop(0.22, `hsla(${hue},90%,92%,${coreA * 0.55})`);
-        gc.addColorStop(0.6,  `hsla(${hue},85%,70%,${coreA * 0.12})`);
+        gc.addColorStop(0,    light ? `hsla(${hue},90%,42%,${coreA * 0.8})` : `rgba(255,255,255,${coreA})`);
+        gc.addColorStop(0.22, `hsla(${hue},90%,${light ? 55 : 92}%,${coreA * 0.55})`);
+        gc.addColorStop(0.6,  `hsla(${hue},85%,${light ? 55 : 70}%,${coreA * 0.12})`);
         gc.addColorStop(1,    `hsla(${hue},80%,60%,0)`);
         ctx.beginPath(); ctx.arc(CX, CY, coreR * 2.8, 0, Math.PI * 2);
         ctx.fillStyle = gc; ctx.fill();
@@ -239,7 +243,7 @@ export default function Orb({ state, onClick }: OrbProps) {
           const wr = (curR * 0.6 + wt * curR * 1.4) * t;
           const wa = (1 - wt) * 0.06 * t;
           ctx.beginPath(); ctx.arc(CX, CY, wr, 0, Math.PI * 2);
-          ctx.strokeStyle = `hsla(${hue},70%,75%,${wa})`;
+          ctx.strokeStyle = `hsla(${hue},70%,${light ? 42 : 75}%,${light ? wa * 2 : wa})`;
           ctx.lineWidth   = Math.max(0.3, 0.8 * (1 - wt));
           ctx.stroke();
         }
@@ -252,7 +256,7 @@ export default function Orb({ state, onClick }: OrbProps) {
           const lr = (curR * 0.3 + lt * curR * 1.9) * t;
           const la = (1 - lt) * 0.16 * t;
           ctx.beginPath(); ctx.arc(CX, CY, lr, 0, Math.PI * 2);
-          ctx.strokeStyle = `hsla(${hue},90%,80%,${la})`;
+          ctx.strokeStyle = `hsla(${hue},90%,${light ? 42 : 80}%,${light ? la * 1.6 : la})`;
           ctx.lineWidth   = 1.0 * (1 - lt * 0.4);
           ctx.stroke();
         }
@@ -269,7 +273,7 @@ export default function Orb({ state, onClick }: OrbProps) {
           ctx.save();
           ctx.rotate(ph * spd);
           ctx.beginPath(); ctx.arc(0, 0, r * t, 0, Math.PI * arc);
-          ctx.strokeStyle = `hsla(${hue},88%,74%,${a * t})`;
+          ctx.strokeStyle = `hsla(${hue},88%,${light ? 42 : 74}%,${a * t * (light ? 1.5 : 1)})`;
           ctx.lineWidth = lw; ctx.setLineDash(dash); ctx.stroke();
           ctx.setLineDash([]); ctx.restore();
         });
@@ -280,9 +284,10 @@ export default function Orb({ state, onClick }: OrbProps) {
       if (s === "wake" && t < 0.08) {
         const p2 = 0.5 + 0.5 * Math.sin(ph * 0.32);
         ctx.beginPath(); ctx.arc(CX, CY, (7 + p2 * 3) * k, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${0.06 + p2 * 0.04})`; ctx.fill();
+        const hint = light ? "30,41,70" : "255,255,255";
+        ctx.fillStyle = `rgba(${hint},${(0.06 + p2 * 0.04) * (light ? 1.6 : 1)})`; ctx.fill();
         ctx.beginPath(); ctx.arc(CX, CY, (24 + p2 * 4) * k, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,255,255,${0.03 + p2 * 0.02})`; ctx.lineWidth = 0.5; ctx.stroke();
+        ctx.strokeStyle = `rgba(${hint},${(0.03 + p2 * 0.02) * (light ? 1.6 : 1)})`; ctx.lineWidth = 0.5; ctx.stroke();
       }
 
       frameRef.current = requestAnimationFrame(draw);
