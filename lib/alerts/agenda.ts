@@ -29,7 +29,7 @@ export function agendaAlerts(events: CalEvent[], nowMs: number): Alert[] {
       out.push({
         id: `agenda:${e.id}:${e.startMs}`,
         source: "agenda",
-        text: `Rodrigo, ${e.title} começa em ${min} ${min === 1 ? "minuto" : "minutos"}.`,
+        text: `Chefe, ${e.title} começa em ${min} ${min === 1 ? "minuto" : "minutos"}.`,
         priority: 1,
         until: e.startMs,
       });

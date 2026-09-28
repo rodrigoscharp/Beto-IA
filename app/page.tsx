@@ -72,6 +72,22 @@ const TAG = {
   BRIEFING: /\[BRIEFING:(\{[\s\S]*?\})\]\s*/,
 };
 
+/* Frases curtas que o Beto solta na hora enquanto pensa, para a conversa não ter silêncio morto.
+   O áudio de cada uma é gerado uma vez e guardado no navegador (Cache Storage): custo de TTS só na primeira vez. */
+const FILLERS = [
+  "Deixa comigo, chefe.",
+  "Já vejo isso.",
+  "Um segundo, chefe.",
+  "Boa, deixa eu pensar.",
+  "Hmm, deixa eu ver.",
+  "Pera aí que eu já te falo.",
+  "Já te respondo, chefe.",
+  "Tô olhando aqui.",
+];
+const FILLER_CACHE = "beto-fillers-v1";
+const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar mais que isso
+const FILLER_MIN_WORDS = 4;    // comando curto ("pausa", "próxima") não precisa de enrolação
+
 /* ══════════════════════════════════════════════════════════════════════════
    Pure helpers
 ══════════════════════════════════════════════════════════════════════════ */
@@ -158,6 +174,11 @@ export default function JarvisPage() {
   const wakeBlocked    = useRef(false);
   const wakeFails      = useRef(0);
   const wakeLock       = useRef<{ release(): Promise<void> } | null>(null);
+  const fillerUrls     = useRef<string[]>([]);
+  const fillerAudio    = useRef<HTMLAudioElement | null>(null);
+  const fillerEnd      = useRef<(() => void) | null>(null);
+  const fillerDone     = useRef<Promise<void> | null>(null);
+  const fillerLast     = useRef(-1);
 
   /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
 
@@ -193,6 +214,9 @@ export default function JarvisPage() {
     if (window.speechSynthesis) window.speechSynthesis.getVoices();
     setMode("wake");
     startWake();
+
+    const prefetch = setTimeout(prefetchFillers, 3000);
+    return () => clearTimeout(prefetch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -315,6 +339,61 @@ export default function JarvisPage() {
     player.connect();
   }
 
+  /* ── Fillers: resposta instantânea enquanto o modelo pensa ────────────── */
+
+  async function prefetchFillers() {
+    if (typeof caches === "undefined") return;
+    try {
+      const cache = await caches.open(FILLER_CACHE);
+      for (const text of FILLERS) {
+        const key = `/__filler/${encodeURIComponent(text)}`;
+        let res = await cache.match(key);
+        if (!res) {
+          const r = await fetch("/api/tts", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ text }),
+          });
+          if (!r.ok) continue;
+          await cache.put(key, r.clone());
+          res = r;
+        }
+        fillerUrls.current.push(URL.createObjectURL(await res.blob()));
+      }
+    } catch { /* sem filler: o Beto só responde um pouco mais seco */ }
+  }
+
+  function playFiller() {
+    const urls = fillerUrls.current;
+    if (!urls.length || fillerAudio.current || !audioUnlocked.current) return;
+    let i = Math.floor(Math.random() * urls.length);
+    if (urls.length > 1 && i === fillerLast.current) i = (i + 1) % urls.length;
+    fillerLast.current = i;
+
+    const audio = new Audio(urls[i]);
+    fillerAudio.current = audio;
+    fillerDone.current  = new Promise<void>(resolve => {
+      fillerEnd.current = () => {
+        fillerAudio.current = null;
+        fillerEnd.current   = null;
+        resolve();
+      };
+    });
+    audio.onended = () => fillerEnd.current?.();
+    audio.onerror = () => fillerEnd.current?.();
+    audio.play().catch(() => fillerEnd.current?.());
+  }
+
+  function stopFiller() {
+    try { fillerAudio.current?.pause(); } catch { /* ok */ }
+    fillerEnd.current?.();
+  }
+
+  /** Espera o filler terminar de falar, para a resposta de verdade não falar por cima dele. */
+  async function waitFiller() {
+    if (fillerAudio.current && fillerDone.current) await fillerDone.current;
+  }
+
   /* ── Mode & stop helpers ─────────────────────────────────────────────── */
 
   function setMode(m: Mode) {
@@ -331,6 +410,7 @@ export default function JarvisPage() {
   }
 
   function stopAll() {
+    stopFiller();
     clearRestartTimer();
     try { wakeRec.current?.abort();   } catch { /* ok */ }
     try { activeRec.current?.abort(); } catch { /* ok */ }
@@ -699,7 +779,7 @@ export default function JarvisPage() {
       if (full.length < 2) return;
       lastFullText = full;
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => doSubmit(full), 800);
+      debounceTimer = setTimeout(() => doSubmit(full), 700);
     };
 
     rec.onerror = () => {
@@ -790,6 +870,10 @@ export default function JarvisPage() {
     const msgs: Msg[] = [...history.current, { role: "user", content: text }];
     history.current   = msgs;
 
+    const fillerTimer = text.trim().split(/\s+/).length >= FILLER_MIN_WORDS
+      ? setTimeout(playFiller, FILLER_DELAY_MS)
+      : null;
+
     try {
       const res  = await fetch("/api/chat", {
         method:  "POST",
@@ -803,7 +887,8 @@ export default function JarvisPage() {
       history.current = [...msgs, { role: "assistant", content: rawReply }];
 
       const done = () => { setMode("wake"); setTimeout(startWake, 300); };
-      const say  = (t: string) => speak(sanitize(t), done);
+      if (fillerTimer) clearTimeout(fillerTimer);
+      const say  = async (t: string) => { await waitFiller(); speak(sanitize(t), done); };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
       const calendar = parseTag<CalendarAction>(rawReply, TAG.CALENDAR);
@@ -825,6 +910,8 @@ export default function JarvisPage() {
       else                      say(rawReply);
 
     } catch {
+      if (fillerTimer) clearTimeout(fillerTimer);
+      stopFiller();
       speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); });
     }
   }

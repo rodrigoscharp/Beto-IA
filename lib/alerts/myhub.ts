@@ -24,7 +24,7 @@ export function myhubAlerts(ctx: MyHubContext, date: string, hour: number, nowMs
       out.push({
         id: `myhub:habitos:${date}`,
         source: "myhub",
-        text: `Rodrigo, ainda faltam hoje: ${lista}.` +
+        text: `Chefe, ainda faltam hoje: ${lista}.` +
           (emRisco ? ` A sequência de ${emRisco.nome} está em ${emRisco.streakAtual} dias, não deixa quebrar.` : ""),
         priority: 0,
         until: endOfDay,
@@ -51,7 +51,7 @@ export function myhubAlerts(ctx: MyHubContext, date: string, hour: number, nowMs
         out.push({
           id: `myhub:meta:${m.titulo}`,
           source: "myhub",
-          text: `Parabéns Rodrigo! A meta ${m.titulo} chegou a cem por cento.`,
+          text: `Parabéns, chefe! A meta ${m.titulo} chegou a cem por cento.`,
           priority: 0,
           until: nowMs + 12 * HOUR_MS,
         });
