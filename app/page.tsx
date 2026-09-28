@@ -55,6 +55,8 @@ interface GmailAction    { action: string; days?: number }
 interface GithubAction   { action: string; repo?: string }
 interface TimerAction    { action: string; minutes?: number; label?: string }
 interface MemoryAction   { action: string; content?: string; category?: string }
+interface MyHubAction    { acao: string; entrada?: unknown }
+interface MyHubResult    { ok: boolean; acao?: { resumo: string; desfazer?: string }; erro?: string }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Constants
@@ -71,6 +73,7 @@ const TAG = {
   TIMER:    /\[TIMER:(\{[\s\S]*?\})\]\s*/,
   MEMORY:   /\[MEMORY:(\{[\s\S]*?\})\]\s*/,
   BRIEFING: /\[BRIEFING:(\{[\s\S]*?\})\]\s*/,
+  MYHUB:    /\[MYHUB:(\{[\s\S]*?\})\]\s*/,
 };
 
 /* Frases curtas que o Beto solta na hora enquanto pensa, para a conversa não ter silêncio morto.
@@ -186,6 +189,8 @@ export default function JarvisPage() {
   const fillerDone     = useRef<Promise<void> | null>(null);
   const fillerLast     = useRef(-1);
   const musicPlaying   = useRef(false);
+  const lastUndo       = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);
+  const undoHinted     = useRef(false);
 
   /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
 
@@ -722,6 +727,43 @@ export default function JarvisPage() {
     } catch { return fallback || "Erro ao acessar a memória."; }
   }
 
+  /** Registra no My Hub. Sucesso vira a frase falada (vem do My Hub, não do modelo); erro volta ao modelo para ele perguntar o que falta. */
+  async function execMyHub(action: MyHubAction): Promise<{ text: string } | { error: string }> {
+    const UNDO_WINDOW_MS = 15 * 60 * 1000;
+
+    if (action.acao === "desfazer") {
+      const last = lastUndo.current;
+      if (!last || Date.now() - last.ts > UNDO_WINDOW_MS) return { text: "Não tenho nenhum registro recente pra desfazer, chefe." };
+      if (!last.path) return { text: "Esse eu não consigo desfazer por voz, chefe. Faz direto no My Hub." };
+      try {
+        const res  = await fetch("/api/myhub/desfazer", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ desfazer: last.path }),
+        });
+        const data = await res.json();
+        if (!data.ok) return { text: "Não consegui desfazer agora, chefe. Tenta direto no My Hub." };
+        lastUndo.current = null;
+        return { text: `Desfeito, chefe: ${last.resumo}.` };
+      } catch { return { text: "Não consegui falar com o My Hub agora." }; }
+    }
+
+    try {
+      const res  = await fetch("/api/myhub/acao", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(action),
+      });
+      const data = await res.json() as MyHubResult;
+      if (!data.ok || !data.acao) return { error: data.erro ?? "Não consegui registrar." };
+
+      lastUndo.current = { path: data.acao.desfazer ?? null, resumo: data.acao.resumo, ts: Date.now() };
+      const hint = !undoHinted.current && data.acao.desfazer ? " Se foi engano, é só falar desfaz." : "";
+      if (data.acao.desfazer) undoHinted.current = true;
+      return { text: `Anotado, chefe: ${data.acao.resumo}.${hint}` };
+    } catch { return { error: "Não consegui falar com o My Hub agora." }; }
+  }
+
   /* ── MiniPlayer handler (fire-and-forget, no voice feedback) ─────────── */
 
   function handleSpotifyCommand(action: string) {
@@ -925,6 +967,7 @@ export default function JarvisPage() {
       const timer    = parseTag<TimerAction>(rawReply,    TAG.TIMER);
       const memory   = parseTag<MemoryAction>(rawReply,   TAG.MEMORY);
       const briefing = parseTag<SpotifyAction>(rawReply,  TAG.BRIEFING);
+      const myhub    = parseTag<MyHubAction>(rawReply,    TAG.MYHUB);
 
       if      (spotify.action)  say(await execSpotify(spotify.action));
       else if (calendar.action) say(await execCalendar(calendar.action), true);
@@ -934,12 +977,46 @@ export default function JarvisPage() {
       else if (timer.action)    say(execTimer(timer.action));
       else if (memory.action)   say(await execMemory(memory.action, memory.text));
       else if (briefing.action) say(await execBriefing(), true);
+      else if (myhub.action) {
+        const r = await execMyHub(myhub.action);
+        if ("text" in r) {
+          // A frase falada é a que fica no histórico: sem a tag, o modelo não a repete.
+          history.current = [...msgs, { role: "assistant", content: r.text }];
+          say(r.text, true);
+        } else {
+          // Faltou dado ou ficou ambíguo: o modelo explica e pergunta, e o Beto já volta a ouvir a resposta.
+          say(await askAboutFailure(msgs, myhub.text || "Anotando.", r.error), true);
+        }
+      }
       else                      say(rawReply, true);
 
     } catch {
       if (fillerTimer) clearTimeout(fillerTimer);
       stopFiller();
       speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); });
+    }
+  }
+
+  /** Devolve ao modelo o erro do My Hub e retorna a frase que ele fala (uma pergunta curta). */
+  async function askAboutFailure(msgs: Msg[], said: string, erro: string): Promise<string> {
+    const fallback = `Chefe, não consegui registrar: ${erro.replace(/\s*Pergunte[^.]*\.?/i, "").trim()}`;
+    try {
+      const res  = await fetch("/api/chat", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ messages: [
+          ...msgs.slice(-18),
+          { role: "assistant", content: said },
+          { role: "user", content: `[SISTEMA] O registro no My Hub falhou: ${erro} Explique ao chefe em uma frase curta e pergunte só o que falta. Não use tag.` },
+        ] }),
+      });
+      const data = await res.json();
+      const text = String(data.reply ?? "").replace(TAG.MYHUB, "").trim() || fallback;
+      history.current = [...msgs, { role: "assistant", content: text }];
+      return text;
+    } catch {
+      history.current = [...msgs, { role: "assistant", content: fallback }];
+      return fallback;
     }
   }
 
