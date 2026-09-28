@@ -1,6 +1,6 @@
 /* Beto service worker: installability + offline fallback only.
    Never caches /api/* or authenticated pages. */
-const CACHE = "beto-shell-v1";
+const CACHE = "beto-shell-v2";
 const SHELL = ["/offline.html", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
