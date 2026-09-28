@@ -63,6 +63,7 @@ export function useProactive({ canSpeak, announce }: Opts): [boolean, () => void
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seen: seen.current, baseline }),
       });
+      if (res.status === 401) { window.location.href = "/login"; return; }
       if (!res.ok) return;
       const data = await res.json() as { alerts: Alert[]; mark: string[] };
 

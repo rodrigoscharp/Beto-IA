@@ -939,6 +939,7 @@ export default function JarvisPage() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ messages: msgs.slice(-20) }),
       });
+      if (res.status === 401) { window.location.href = "/login"; return; } // sessão expirou: volta ao login em vez de falhar calado
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
 
