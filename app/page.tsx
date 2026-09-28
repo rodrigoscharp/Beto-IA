@@ -17,9 +17,10 @@ interface SR extends EventTarget {
   start(): void; stop(): void; abort(): void;
   onstart:  ((e: Event)   => void) | null;
   onresult: ((e: SREvent) => void) | null;
-  onerror:  ((e: Event)   => void) | null;
+  onerror:  ((e: SRErrorEvent) => void) | null;
   onend:    ((e: Event)   => void) | null;
 }
+interface SRErrorEvent extends Event { error?: string }
 interface SRCtor { new(): SR; }
 
 declare global {
@@ -150,6 +151,10 @@ export default function JarvisPage() {
   const timerInterval  = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerSecsLeft  = useRef(0);
   const timerLabel     = useRef("");
+  const wakeLastAlive  = useRef(0);
+  const wakeBlocked    = useRef(false);
+  const wakeFails      = useRef(0);
+  const wakeLock       = useRef<{ release(): Promise<void> } | null>(null);
 
   /* ── Lifecycle: auto-start on mount ─────────────────────────────────── */
 
@@ -200,6 +205,51 @@ export default function JarvisPage() {
       document.removeEventListener("click",      unlock);
       document.removeEventListener("touchstart", unlock);
       document.removeEventListener("keydown",    unlock);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ── Lifecycle: keep listening while the app stays open (Dock/PWA) ───── */
+
+  useEffect(() => {
+    const revive = () => {
+      if (mode.current !== "wake" || wakeBlocked.current) return;
+      const stale = Date.now() - wakeLastAlive.current > 20_000;
+      if (!wakeRec.current || stale) startWake();
+    };
+
+    const acquireLock = async () => {
+      try {
+        const wl = (navigator as unknown as {
+          wakeLock?: { request(t: "screen"): Promise<{ release(): Promise<void> }> };
+        }).wakeLock;
+        if (!wl || wakeLock.current || document.visibilityState !== "visible") return;
+        const sentinel = await wl.request("screen");
+        wakeLock.current = sentinel;
+        (sentinel as unknown as EventTarget).addEventListener("release", () => { wakeLock.current = null; });
+      } catch { /* unsupported or denied */ }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") { acquireLock(); }
+      revive();
+    };
+
+    acquireLock();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus",    revive);
+    window.addEventListener("pageshow", revive);
+    window.addEventListener("online",   revive);
+    const watchdog = setInterval(revive, 5_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus",    revive);
+      window.removeEventListener("pageshow", revive);
+      window.removeEventListener("online",   revive);
+      clearInterval(watchdog);
+      wakeLock.current?.release().catch(() => {});
+      wakeLock.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -303,7 +353,7 @@ export default function JarvisPage() {
 
   function onCountdownEnd(label: string) {
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification("Beto", { body: `${label} finalizado!`, icon: "/favicon.ico" });
+      new Notification("Beto", { body: `${label} finalizado!`, icon: "/icons/icon-192.png" });
     }
     const lower = label.toLowerCase();
     const msg   =
@@ -665,6 +715,7 @@ export default function JarvisPage() {
     if (!API) return;
     try { wakeRec.current?.abort(); } catch { /* ok */ }
     wakeRec.current = null;
+    wakeLastAlive.current = Date.now();
 
     const rec = new API();
     wakeRec.current             = rec;
@@ -673,7 +724,13 @@ export default function JarvisPage() {
     rec.continuous              = true;
     rec.maxAlternatives         = 1;
 
+    rec.onstart = () => {
+      wakeLastAlive.current = Date.now();
+      wakeFails.current     = 0;
+      if (wakeBlocked.current) { wakeBlocked.current = false; setCaption(""); }
+    };
     rec.onresult = (e) => {
+      wakeLastAlive.current = Date.now();
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript.toLowerCase().trim();
         if (WAKE_WORDS.some(w => t.includes(w))) {
@@ -685,8 +742,20 @@ export default function JarvisPage() {
         }
       }
     };
-    rec.onerror = () => { if (mode.current === "wake") restartTimer.current = setTimeout(startWake, 800); };
-    rec.onend   = () => { if (mode.current === "wake") restartTimer.current = setTimeout(startWake, 400); };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        wakeBlocked.current = true;
+        setCaption("Libere o microfone e o Ditado (Ajustes do Mac) e toque na tela.");
+        return;
+      }
+      if (mode.current !== "wake") return;
+      wakeFails.current += 1;
+      const delay = Math.min(800 * wakeFails.current, 5000);
+      restartTimer.current = setTimeout(startWake, delay);
+    };
+    rec.onend = () => {
+      if (mode.current === "wake" && !wakeBlocked.current) restartTimer.current = setTimeout(startWake, 400);
+    };
 
     try {
       rec.start();
@@ -766,11 +835,25 @@ export default function JarvisPage() {
       return;
     }
 
+    if (wakeBlocked.current) {
+      wakeBlocked.current = false;
+      wakeFails.current   = 0;
+      setCaption("");
+      startWake();
+      return;
+    }
+
     // wake mode: tap orb to skip wake word and go straight to listening
     try { wakeRec.current?.abort(); } catch { /* ok */ }
     wakeRec.current = null;
     clearRestartTimer();
     restartTimer.current = setTimeout(startActive, 150);
+  }
+
+  async function logout() {
+    stopAll();
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = "/login";
   }
 
   /* ── Render ──────────────────────────────────────────────────────────── */
@@ -791,6 +874,21 @@ export default function JarvisPage() {
       }}>
         BETO · ONLINE
       </div>
+
+      {/* Logout — top left under badge */}
+      <button
+        onClick={logout}
+        title="Sair"
+        style={{
+          position: "fixed", top: 38, left: 22, zIndex: 10,
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          color: "rgba(255,255,255,0.14)",
+          fontSize: 10, fontFamily: "monospace",
+          letterSpacing: "0.15em", textTransform: "uppercase",
+        }}
+      >
+        sair
+      </button>
 
       {/* Audio unlock hint — fades away after first interaction */}
       {!audioReady && (

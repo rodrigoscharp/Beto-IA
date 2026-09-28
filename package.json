@@ -1,12 +1,13 @@
 {
-  "name": "jarvis",
+  "name": "beto-ia",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
@@ -24,6 +25,7 @@
     "eslint": "^8",
     "eslint-config-next": "^14.2.30",
     "postcss": "^8",
+    "sharp": "^0.35.5",
     "tailwindcss": "^3.3.0",
     "typescript": "^5"
   }
