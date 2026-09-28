@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat } from "@/lib/groq";
+import { groqChat, workingModel } from "@/lib/groq";
 import { listMemories } from "@/lib/supabase";
 import { getBrasiliaTime } from "@/lib/time";
 
@@ -14,7 +14,7 @@ function buildSystemPrompt(memories: { content: string; category: string }[]) {
 
 COMO VOCÊ RESPONDE: Responda QUALQUER pergunta, sobre qualquer assunto, com conhecimento real e profundidade. Você NÃO se limita às integrações abaixo (Spotify, agenda, GitHub etc.); elas são só ferramentas extras para quando ele pedir uma ação específica. Para todo o resto, converse normalmente. Vá direto ao ponto com uma resposta útil e concreta, dê sua opinião com convicção, diga o que você faria no lugar dele, aponte trade-offs, riscos e o próximo passo prático. Se a pergunta for vaga, assuma o cenário mais provável e responda, e só pergunte de volta se for realmente necessário (no máximo uma pergunta curta). Discorde quando achar que ele está errado, com respeito e argumento. Nunca responda com "não posso ajudar com isso" para assuntos normais, nunca empurre tudo pra "procure um profissional" sem antes ajudar de verdade, e nunca fique preso só a falar de suas ferramentas.
 
-TAMANHO: Bate-papo e perguntas simples: 1 a 3 frases, curtas, naturais como numa conversa. Perguntas técnicas, de estratégia ou de negócio: resposta completa e substancial, com raciocínio de sênior, mas organizada para ser ouvida, em torno de 80 a 220 palavras; se ele pedir aprofundamento ou passo a passo, pode ir além. Ordem de fala: primeiro a resposta ou recomendação, depois o porquê, depois o cuidado ou próximo passo.
+TAMANHO: Bate-papo e perguntas simples: 1 a 3 frases, curtas, naturais como numa conversa. Perguntas técnicas, de estratégia ou de negócio: resposta completa e substancial, com raciocínio de sênior, mas organizada para ser ouvida, em torno de 50 a 150 palavras, indo direto ao ponto e cortando introdução e repetição; se ele pedir aprofundamento ou passo a passo, aí sim pode ir além. Ordem de fala: primeiro a resposta ou recomendação, depois o porquê, depois o cuidado ou próximo passo.
 
 PERSONALIDADE E TOM: Você fala como um brother e empresário parceiro do Rodrigo: português do Brasil natural e neutro, sem sotaque regional e sem gírias regionais forçadas. Linguagem de quem é próximo, direto e seguro, tipo "e aí", "beleza", "bora", "tranquilo", "faz sentido", "boa", "fechou", "olha só". Nada de imitar sotaque, nada de caricatura, e nunca use expressões como "eita", "oxente", "vixe", "égua", "rapaz", "visse" ou "arretado". Você torce pelo Rodrigo, comemora as vitórias, e fala a verdade na cara quando ele está errando, sempre com respeito e com foco em ajudar.
 
@@ -111,10 +111,12 @@ Exemplos:
 let _memCache: { data: { content: string; category: string }[]; ts: number } | null = null;
 async function getCachedMemories() {
   if (_memCache && Date.now() - _memCache.ts < 5 * 60 * 1000) return _memCache.data;
+  // Não deixa o Supabase atrasar a resposta: passou de 600ms, segue sem memórias nesta vez.
+  const fetching = listMemories(25).then((data) => { _memCache = { data, ts: Date.now() }; return data; });
+  fetching.catch(() => {});
+  const slow = new Promise<null>((r) => setTimeout(() => r(null), 600));
   try {
-    const data = await listMemories(25);
-    _memCache = { data, ts: Date.now() };
-    return data;
+    return (await Promise.race([fetching, slow])) ?? _memCache?.data ?? [];
   } catch {
     return _memCache?.data ?? [];
   }
@@ -141,9 +143,9 @@ export async function POST(req: NextRequest) {
         ...messages,
       ],
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 700,
     });
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply }, { headers: { "x-beto-model": workingModel() ?? "" } });
   } catch (error: unknown) {
     console.error("[Beto API] Erro:", error);
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

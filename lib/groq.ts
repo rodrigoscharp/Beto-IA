@@ -1,61 +1,82 @@
 import Groq from "groq-sdk";
 
-/* Groq retira modelos e nem todo modelo listado é acessível na conta.
-   Tenta os preferidos em ordem e cai pro próximo em "model_not_found". */
+/* Groq retira modelos e cada conta enxerga um conjunto diferente.
+   Tenta os preferidos em ordem (o primeiro que funcionar fica em cache) e
+   só consulta a lista de modelos se todos falharem. */
 const PREFERRED = [
-  "llama-3.3-70b-versatile",
+  process.env.GROQ_MODEL,
   "openai/gpt-oss-120b",
-  "meta-llama/llama-4-maverick-17b-128e-instruct",
-  "qwen/qwen3-32b",
   "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b",
+  "llama-3.3-70b-versatile",
+  "meta-llama/llama-4-maverick-17b-128e-instruct",
   "meta-llama/llama-4-scout-17b-16e-instruct",
   "llama-3.1-8b-instant",
-];
-const NOT_CHAT = /whisper|guard|tts|orpheus|playai|distil|safeguard/i;
+].filter(Boolean) as string[];
+const NOT_CHAT = /whisper|guard|tts|orpheus|playai|distil|safeguard|allam/i;
 
 type ChatParams = Omit<Parameters<Groq["chat"]["completions"]["create"]>[0], "model" | "stream">;
 
-let listed: { ids: string[]; ts: number } | null = null;
 let working: string | null = null;
+export const workingModel = () => working;
 
-async function availableModels(groq: Groq): Promise<string[]> {
-  if (listed && Date.now() - listed.ts < 60 * 60 * 1000) return listed.ids;
-  try {
-    const ids = (await groq.models.list()).data.map((m) => m.id);
-    listed = { ids, ts: Date.now() };
-    return ids;
-  } catch {
-    return listed?.ids ?? [];
-  }
-}
+const cooldown = new Map<string, number>(); // model -> timestamp até quando pular
 
 const isModelError = (e: unknown) => {
   const err = e as { status?: number; message?: string };
   return err?.status === 404 || /model_not_found|decommissioned|does not exist/i.test(err?.message ?? "");
 };
+const isBusyError = (e: unknown) => {
+  const err = e as { status?: number; name?: string; message?: string };
+  return err?.status === 429 || (err?.status ?? 0) >= 500 || /timeout|timed out|ECONN|fetch failed/i.test(`${err?.name} ${err?.message}`);
+};
+
+async function attempt(groq: Groq, params: ChatParams, model: string) {
+  // Modelos de raciocínio (gpt-oss) pensam por vários segundos por padrão; "low" mantém a resposta rápida.
+  const fast = /^openai\/gpt-oss/.test(model) ? { reasoning_effort: "low" } : {};
+  const res = await groq.chat.completions.create({ ...params, ...fast, model, stream: false } as never) as Groq.Chat.ChatCompletion;
+  working = model;
+  return (res.choices[0]?.message?.content ?? "")
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .trim();
+}
 
 export async function groqChat(apiKey: string, params: ChatParams): Promise<string> {
-  const groq = new Groq({ apiKey });
-  const ids  = await availableModels(groq);
-
-  const ordered = PREFERRED.filter((m) => ids.length === 0 || ids.includes(m));
-  const extra   = ids.filter((m) => !PREFERRED.includes(m) && !NOT_CHAT.test(m));
-  const candidates = [working, ...ordered, ...extra, ...PREFERRED]
-    .filter((m, i, a): m is string => !!m && a.indexOf(m) === i);
-
+  // Sem retries longos do SDK: se um modelo engasgar (429/5xx/timeout), passa pro próximo na hora.
+  const groq = new Groq({ apiKey, maxRetries: 0, timeout: 12_000 });
+  const tried = new Set<string>();
   let lastError: unknown;
-  for (const model of candidates.slice(0, 8)) {
-    try {
-      const res = await groq.chat.completions.create({ ...params, model, stream: false });
-      working = model;
-      return (res.choices[0]?.message?.content ?? "")
-        .replace(/<think>[\s\S]*?<\/think>/g, "")
-        .trim();
-    } catch (e) {
-      lastError = e;
-      if (!isModelError(e)) throw e;
-      if (working === model) working = null;
+
+  const run = async (models: string[], ignoreCooldown = false) => {
+    for (const model of models) {
+      if (tried.has(model) || (!ignoreCooldown && (cooldown.get(model) ?? 0) > Date.now())) continue;
+      tried.add(model);
+      try {
+        return await attempt(groq, params, model);
+      } catch (e) {
+        lastError = e;
+        if (isBusyError(e)) cooldown.set(model, Date.now() + 20_000);
+        else if (!isModelError(e)) throw e;
+        if (working === model) working = null;
+      }
     }
+    return null;
+  };
+
+  const order = [working, ...PREFERRED].filter(Boolean) as string[];
+  const first = await run(order);
+  if (first !== null) return first;
+  // Todos em cooldown por limite de uso: tenta de novo mesmo assim, o limite pode já ter liberado.
+  tried.clear();
+  const again = await run(order, true);
+  if (again !== null) return again;
+
+  try {
+    const ids = (await groq.models.list()).data.map((m) => m.id).filter((m) => !NOT_CHAT.test(m));
+    const extra = await run(ids);
+    if (extra !== null) return extra;
+  } catch (e) {
+    lastError = e;
   }
   throw lastError;
 }

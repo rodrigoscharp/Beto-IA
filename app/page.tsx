@@ -683,7 +683,7 @@ export default function JarvisPage() {
       if (full.length < 2) return;
       lastFullText = full;
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => doSubmit(full), 1200);
+      debounceTimer = setTimeout(() => doSubmit(full), 800);
     };
 
     rec.onerror = () => {
