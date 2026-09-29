@@ -30,6 +30,13 @@ const isBusyError = (e: unknown) => {
   const err = e as { status?: number; name?: string; message?: string };
   return err?.status === 429 || (err?.status ?? 0) >= 500 || /timeout|timed out|ECONN|fetch failed/i.test(`${err?.name} ${err?.message}`);
 };
+/* Prompt maior que o limite DAQUELE modelo (alguns têm janela bem menor que os outros).
+   Não é "aquele modelo está ocupado" — é "esse modelo não serve pra esse pedido" — mas o efeito
+   prático é o mesmo: pula pro próximo da lista em vez de derrubar a conversa inteira. */
+const isTooLargeError = (e: unknown) => {
+  const err = e as { status?: number; message?: string };
+  return err?.status === 413 || /too large|context_length_exceeded|rate_limit_exceeded.*token/i.test(err?.message ?? "");
+};
 
 async function attempt(groq: Groq, params: ChatParams, model: string) {
   // Modelos de raciocínio (gpt-oss) pensam por vários segundos por padrão; "low" mantém a resposta rápida.
@@ -55,8 +62,9 @@ export async function groqChat(apiKey: string, params: ChatParams): Promise<stri
         return await attempt(groq, params, model);
       } catch (e) {
         lastError = e;
-        if (isBusyError(e)) cooldown.set(model, Date.now() + 20_000);
-        else if (!isModelError(e)) throw e;
+        if      (isBusyError(e))    cooldown.set(model, Date.now() + 20_000);
+        else if (isTooLargeError(e)) cooldown.set(model, Date.now() + 5_000); // pula pro próximo agora; o cooldown é só pra não bater nele de novo na mesma rajada
+        else if (!isModelError(e))  throw e; // erro real (chave inválida, etc.): não adianta tentar os outros 6 modelos
         if (working === model) working = null;
       }
     }
