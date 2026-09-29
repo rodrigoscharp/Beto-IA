@@ -26,16 +26,20 @@ const isModelError = (e: unknown) => {
   const err = e as { status?: number; message?: string };
   return err?.status === 404 || /model_not_found|decommissioned|does not exist/i.test(err?.message ?? "");
 };
-const isBusyError = (e: unknown) => {
-  const err = e as { status?: number; name?: string; message?: string };
-  return err?.status === 429 || (err?.status ?? 0) >= 500 || /timeout|timed out|ECONN|fetch failed/i.test(`${err?.name} ${err?.message}`);
-};
-/* Prompt maior que o limite DAQUELE modelo (alguns têm janela bem menor que os outros).
-   Não é "aquele modelo está ocupado" — é "esse modelo não serve pra esse pedido" — mas o efeito
-   prático é o mesmo: pula pro próximo da lista em vez de derrubar a conversa inteira. */
-const isTooLargeError = (e: unknown) => {
+
+/*
+ * Lista de bloqueio, não de permissão: só a CHAVE ser inválida é motivo pra desistir na hora — tentar
+ * os outros 6 modelos com uma chave ruim é perda de tempo garantida. Tudo mais tenta o próximo modelo.
+ *
+ * Isso existia ao contrário até aqui (uma lista de quais erros "mereciam" cair pro próximo modelo:
+ * ocupado, tamanho…), e cada erro novo que a Groq inventa — um 413 de limite baixo num modelo, um 400
+ * porque o gpt-oss achou que a tag [MYHUB:{...}] era uma chamada de ferramenta — caía no "senão" e
+ * derrubava a conversa inteira mesmo com modelos bons esperando na fila. A lista de bloqueio não tem
+ * esse problema: erro que a gente nunca viu antes também pula pro próximo, sem precisar prever o nome dele.
+ */
+const isFatalError = (e: unknown) => {
   const err = e as { status?: number; message?: string };
-  return err?.status === 413 || /too large|context_length_exceeded|rate_limit_exceeded.*token/i.test(err?.message ?? "");
+  return err?.status === 401 || err?.status === 403 || /invalid.api.key|unauthorized/i.test(err?.message ?? "");
 };
 
 async function attempt(groq: Groq, params: ChatParams, model: string) {
@@ -62,9 +66,8 @@ export async function groqChat(apiKey: string, params: ChatParams): Promise<stri
         return await attempt(groq, params, model);
       } catch (e) {
         lastError = e;
-        if      (isBusyError(e))    cooldown.set(model, Date.now() + 20_000);
-        else if (isTooLargeError(e)) cooldown.set(model, Date.now() + 5_000); // pula pro próximo agora; o cooldown é só pra não bater nele de novo na mesma rajada
-        else if (!isModelError(e))  throw e; // erro real (chave inválida, etc.): não adianta tentar os outros 6 modelos
+        if (isFatalError(e)) throw e; // chave inválida etc.: os outros 6 modelos vão falhar igual
+        if (!isModelError(e)) cooldown.set(model, Date.now() + 20_000); // não existe pra essa conta: sem cooldown, tenta de novo já
         if (working === model) working = null;
       }
     }
