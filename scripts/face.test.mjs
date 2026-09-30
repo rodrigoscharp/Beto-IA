@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   EMOTIONS, EXPRESSIONS, STATE_FACES, FACE_POINTS, FACE_LAYOUT,
-  faceFor, faceTargets, lerpFace, applyLife, clusterOf,
+  faceFor, faceTargets, lerpFace, applyLife, clusterOf, parseEmotion, EMOTION_TAG,
 } from "../components/face.ts";
 
 const allFaces = [
@@ -133,4 +133,50 @@ test("clusterOf cobre 0..319 com o layout esperado", () => {
   const count = { eye: 0, brow: 0, mouth: 0, dust: 0 };
   for (let i = 0; i < FACE_POINTS; i++) count[clusterOf(i)]++;
   assert.deepEqual(count, { eye: 112, brow: 64, mouth: 96, dust: 48 });
+});
+
+test("parseEmotion: tag simples sai do texto", () => {
+  assert.deepEqual(parseEmotion("[emo:alegre] Fechou, chefe!"), { emotion: "alegre", text: "Fechou, chefe!" });
+});
+
+test("parseEmotion: ignora maiúscula, acento e espaço", () => {
+  assert.equal(parseEmotion("[emo:ALEGRE] oi").emotion, "alegre");
+  assert.equal(parseEmotion("[emo: sarcástico ] oi").emotion, "sarcastico");
+  assert.equal(parseEmotion("[EMO : Bravo] oi").emotion, "bravo");
+});
+
+test("parseEmotion: sem tag, tag inválida ou desconhecida cai em neutro", () => {
+  assert.deepEqual(parseEmotion("Oi, chefe."), { emotion: "neutro", text: "Oi, chefe." });
+  assert.equal(parseEmotion("[emo:feliz] oi").emotion, "neutro");
+  assert.equal(parseEmotion("[emo:] oi").emotion, "neutro");
+  assert.equal(parseEmotion("[emo:feliz] oi").text, "oi");
+});
+
+test("parseEmotion: duas tags, a primeira válida vence e todas saem", () => {
+  const r = parseEmotion("[emo:triste] Poxa. [emo:alegre] Mas bora.");
+  assert.equal(r.emotion, "triste");
+  assert.ok(!r.text.includes("emo:"));
+  assert.equal(parseEmotion("[emo:feliz] [emo:bravo] ei").emotion, "bravo");
+});
+
+test("parseEmotion: tag no meio do texto também sai", () => {
+  const r = parseEmotion("Olha só [emo:animado] que ideia boa.");
+  assert.equal(r.emotion, "animado");
+  assert.equal(r.text, "Olha só que ideia boa.");
+});
+
+test("parseEmotion: convive com tag de ação em qualquer ordem e não mexe nela", () => {
+  const act = '[SPOTIFY:{"action":"pause"}]';
+  assert.equal(parseEmotion(`[emo:neutro] ${act} Ok.`).text, `${act} Ok.`);
+  assert.equal(parseEmotion(`${act} [emo:neutro] Ok.`).text, `${act} Ok.`);
+  assert.equal(parseEmotion(`${act} [emo:neutro] Ok.`).emotion, "neutro");
+});
+
+test("parseEmotion: resposta que é só a tag ou vazia não quebra", () => {
+  assert.deepEqual(parseEmotion("[emo:alegre]"), { emotion: "alegre", text: "" });
+  assert.deepEqual(parseEmotion(""), { emotion: "neutro", text: "" });
+});
+
+test("EMOTION_TAG remove a tag de qualquer texto (defesa da sanitize)", () => {
+  assert.equal("[emo:bravo] Oi [emo:x] tudo".replace(EMOTION_TAG, ""), "Oi tudo");
 });

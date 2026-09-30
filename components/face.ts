@@ -233,3 +233,21 @@ export function faceTargets(face: Face, phase = 0): Pt[] {
   }
   return out;
 }
+
+/* ── Tag de emoção da resposta do chat ───────────────────────────────────── */
+
+/* `[emo:X]`, tolerante a maiúscula e espaço. Global: use só com .replace, nunca com .test. */
+export const EMOTION_TAG = /\[\s*emo\s*:\s*([^\]\n]{0,24}?)\s*\]\s*/gi;
+
+const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+/* Tira TODAS as tags de emoção do texto e devolve a primeira válida (ou "neutro"). */
+export function parseEmotion(reply: string): { emotion: Emotion; text: string } {
+  const found: Emotion[] = [];
+  const text = reply.replace(EMOTION_TAG, (_m, name: string) => {
+    const key = fold(name);
+    if ((EMOTIONS as readonly string[]).includes(key)) found.push(key as Emotion);
+    return "";
+  }).trim();
+  return { emotion: found[0] ?? "neutro", text };
+}

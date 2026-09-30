@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
+import { EMOTION_TAG, parseEmotion, type Emotion } from "@/components/face";
 import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
@@ -138,6 +139,7 @@ function parseTag<T>(reply: string, re: RegExp): { action: T | null; text: strin
 
 function sanitize(text: string): string {
   return text
+    .replace(EMOTION_TAG, "")     // última defesa: a tag nunca é falada nem vai para a legenda
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`\n]+`/g, "")
     .replace(/^\s*#{1,6}\s+/gm, "")
@@ -191,6 +193,7 @@ export default function JarvisPage() {
   /* ── State ───────────────────────────────────────────────────────────── */
 
   const [orbState,     setOrbState]     = useState<OrbState>("wake");
+  const [emotion,      setEmotion]      = useState<Emotion>("neutro");
   const [caption,      setCaption]      = useState("");
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
   const [audioReady,   setAudioReady]   = useState(false);
@@ -466,6 +469,8 @@ export default function JarvisPage() {
 
   function setMode(m: Mode) {
     mode.current = m;
+    // A emoção da resposta só vale enquanto o Beto fala; ouvindo, pensando ou em wake ela não sobra para o próximo turno.
+    if (m !== "speaking") setEmotion("neutro");
     setOrbState(
       m === "speaking"  ? "speaking"  :
       m === "thinking"  ? "thinking"  :
@@ -524,6 +529,7 @@ export default function JarvisPage() {
       lower.includes("pomodoro") ? "Pomodoro finalizado! Hora de uma pausa merecida." :
       lower.includes("pausa")    ? "Pausa encerrada. Bora voltar ao foco!"            :
       `${label} finalizado!`;
+    setEmotion("alegre");
     speak(msg, () => { setMode("wake"); startWake(); });
   }
 
@@ -1017,6 +1023,7 @@ export default function JarvisPage() {
       const options = GREETINGS[greeting];
       const reply   = options[Math.floor(Math.random() * options.length)]!;
       history.current = [...history.current, { role: "user", content: text }, { role: "assistant", content: reply }];
+      setEmotion("alegre");   // saudação não passa pelo modelo, então não tem tag
       const after = () => {
         if (!musicPlaying.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
         else { setMode("wake"); setTimeout(startWake, 300); }
@@ -1060,9 +1067,14 @@ export default function JarvisPage() {
           if (retry.ok) rawReply = String((await retry.json()).reply ?? rawReply);
         } catch { /* segue com a resposta original */ }
       }
-      history.current = [...msgs, { role: "assistant", content: rawReply }];
+      // A tag [emo:X] vira o humor do rosto e sai do texto: não é falada, não vai para a legenda nem para as tags de ação.
+      const emo = parseEmotion(rawReply);
+      rawReply = emo.text;
+      // O histórico guarda a tag: ver o formato nas respostas anteriores ajuda o modelo a não esquecer dela.
+      history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${rawReply}` }];
 
       if (fillerTimer) clearTimeout(fillerTimer);
+      setEmotion(emo.emotion);
       // Respostas de conversa/consulta continuam ouvindo; comando de música, timer e memória voltam ao wake word
       // (com música tocando o microfone aberto captaria a letra como se fosse você).
       const say  = async (t: string, followUp = false) => {
@@ -1110,6 +1122,7 @@ export default function JarvisPage() {
     } catch {
       if (fillerTimer) clearTimeout(fillerTimer);
       stopFiller();
+      setEmotion("triste");
       speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); });
     }
   }
@@ -1128,7 +1141,9 @@ export default function JarvisPage() {
         ] }),
       });
       const data = await res.json();
-      const text = String(data.reply ?? "").replace(TAG.MYHUB, "").trim() || fallback;
+      const emo  = parseEmotion(String(data.reply ?? ""));
+      setEmotion(emo.emotion);
+      const text = emo.text.replace(TAG.MYHUB, "").trim() || fallback;
       history.current = [...msgs, { role: "assistant", content: text }];
       return text;
     } catch {
@@ -1184,7 +1199,7 @@ export default function JarvisPage() {
 
   return (
     <main style={{ position: "fixed", inset: 0, background: "var(--bg)" }}>
-      <Orb state={orbState} onClick={handleClick} theme={theme} />
+      <Orb state={orbState} emotion={emotion} onClick={handleClick} theme={theme} />
 
       <MiniPlayer onCommand={handleSpotifyCommand} onPlaying={(p) => { musicPlaying.current = p; }} />
 
