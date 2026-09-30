@@ -194,6 +194,7 @@ export default function JarvisPage() {
 
   const [orbState,     setOrbState]     = useState<OrbState>("wake");
   const [emotion,      setEmotion]      = useState<Emotion>("neutro");
+  const [talking,      setTalking]      = useState(false);   // voz de fato tocando: a boca do rosto só mexe nesse intervalo
   const [caption,      setCaption]      = useState("");
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
   const [audioReady,   setAudioReady]   = useState(false);
@@ -423,11 +424,13 @@ export default function JarvisPage() {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     window.speechSynthesis?.cancel();
     setMode("speaking");
+    setTalking(false);
     setCaption(text);
 
     const audio = new Audio(url);
     audioRef.current = audio;
-    const finish = () => { audioRef.current = null; setCaption(""); onDone(); };
+    const finish = () => { audioRef.current = null; setTalking(false); setCaption(""); onDone(); };
+    audio.onplaying = () => setTalking(true);
     audio.onended = finish;
     audio.onerror = finish;
     audio.play().catch(finish);
@@ -470,7 +473,7 @@ export default function JarvisPage() {
   function setMode(m: Mode) {
     mode.current = m;
     // A emoção da resposta só vale enquanto o Beto fala; ouvindo, pensando ou em wake ela não sobra para o próximo turno.
-    if (m !== "speaking") setEmotion("neutro");
+    if (m !== "speaking") { setEmotion("neutro"); setTalking(false); }
     setOrbState(
       m === "speaking"  ? "speaking"  :
       m === "thinking"  ? "thinking"  :
@@ -544,10 +547,13 @@ export default function JarvisPage() {
   function speak(text: string, onDone: () => void, gate: Promise<void> = Promise.resolve()) {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     window.speechSynthesis?.cancel();
+    // Nada para falar (ex.: a resposta veio só com a tag de emoção): segue o fluxo sem ficar mudo em "speaking".
+    if (!text.trim()) { onDone(); return; }
     setMode("speaking");
+    setTalking(false);
     setCaption(text);
 
-    const done = () => { setCaption(""); onDone(); };
+    const done = () => { setTalking(false); setCaption(""); onDone(); };
 
     const synthFallback = () => {
       const synth = window.speechSynthesis;
@@ -556,6 +562,7 @@ export default function JarvisPage() {
       const v   = pickVoice();
       if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "pt-BR"; }
       u.rate    = 0.88; u.pitch = 0.78; u.volume = 1;
+      u.onstart = () => setTalking(true);
       u.onend   = done;
       u.onerror = done;
       gate.then(() => synth.speak(u));
@@ -580,6 +587,7 @@ export default function JarvisPage() {
           audioRef.current = audio;
 
           const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
+          audio.onplaying = () => setTalking(true);
           audio.onended = cleanup;
           audio.onerror = cleanup;
 
@@ -626,6 +634,7 @@ export default function JarvisPage() {
               const audio = new Audio(url);
               audioRef.current  = audio;
               const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
+              audio.onplaying = () => setTalking(true);
               audio.onended = cleanup;
               audio.onerror = cleanup;
               gate.then(() => audio.play()).catch(done);
@@ -1137,7 +1146,7 @@ export default function JarvisPage() {
         body:    JSON.stringify({ messages: [
           ...msgs.slice(-18),
           { role: "assistant", content: said },
-          { role: "user", content: `[SISTEMA] O registro no My Hub falhou: ${erro} Explique ao chefe em uma frase curta e pergunte só o que falta. Não use tag.` },
+          { role: "user", content: `[SISTEMA] O registro no My Hub falhou: ${erro} Explique ao chefe em uma frase curta e pergunte só o que falta. Não use tag de ação.` },
         ] }),
       });
       const data = await res.json();
@@ -1199,7 +1208,7 @@ export default function JarvisPage() {
 
   return (
     <main style={{ position: "fixed", inset: 0, background: "var(--bg)" }}>
-      <Orb state={orbState} emotion={emotion} onClick={handleClick} theme={theme} />
+      <Orb state={orbState} emotion={emotion} talking={talking} onClick={handleClick} theme={theme} />
 
       <MiniPlayer onCommand={handleSpotifyCommand} onPlaying={(p) => { musicPlaying.current = p; }} />
 

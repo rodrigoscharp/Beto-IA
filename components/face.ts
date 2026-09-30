@@ -236,8 +236,8 @@ export function faceTargets(face: Face, phase = 0): Pt[] {
 
 /* ── Tag de emoção da resposta do chat ───────────────────────────────────── */
 
-/* `[emo:X]`, tolerante a maiúscula e espaço. Global: use só com .replace, nunca com .test. */
-export const EMOTION_TAG = /\[\s*emo\s*:\s*([^\]\n]{0,24}?)\s*\]\s*/gi;
+/* `[emo:X]`, tolerante a maiúscula, espaço e variação no nome (`[emoção:X]`); uma tag com nome inválido também sai do texto. Global: use só com .replace, nunca com .test. */
+export const EMOTION_TAG = /\[\s*emo[^\]:\n]*:?\s*([^\]\n]*?)\s*\]\s*/gi;
 
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
@@ -247,7 +247,7 @@ export function parseEmotion(reply: string): { emotion: Emotion; text: string } 
   const text = reply.replace(EMOTION_TAG, (_m, name: string) => {
     const key = fold(name);
     if ((EMOTIONS as readonly string[]).includes(key)) found.push(key as Emotion);
-    return "";
-  }).trim();
+    return " ";   // espaço, não vazio: "Poxa.[emo:x]Mas" não vira "Poxa.Mas"
+  }).replace(/ {2,}/g, " ").trim();
   return { emotion: found[0] ?? "neutro", text };
 }

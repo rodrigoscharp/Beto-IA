@@ -7,7 +7,11 @@ import {
 } from "@/components/face";
 
 export type OrbState = "wake" | "listening" | "thinking" | "speaking";
-interface OrbProps { state: OrbState; onClick: () => void; theme?: "dark" | "light"; emotion?: Emotion; }
+interface OrbProps {
+  state: OrbState; onClick: () => void; theme?: "dark" | "light"; emotion?: Emotion;
+  /** A boca só mexe com a voz de fato tocando (no `speaking` ela fica parada durante o fetch/prebuffer do TTS). */
+  talking?: boolean;
+}
 
 /* ── Config ──────────────────────────────────────────────────────────────── */
 
@@ -43,11 +47,12 @@ function mkParticles(w: number, h: number): P[] {
 
 /* ── Componente ──────────────────────────────────────────────────────────── */
 
-export default function Orb({ state, onClick, theme = "dark", emotion = "neutro" }: OrbProps) {
+export default function Orb({ state, onClick, theme = "dark", emotion = "neutro", talking = true }: OrbProps) {
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const frameRef   = useRef(0);
   const stateRef   = useRef(state);
   const emotionRef = useRef<Emotion>(emotion);
+  const talkingRef = useRef(talking);
   const lightRef   = useRef(theme === "light");
   const prevRef    = useRef<OrbState>(state);
   const ptsRef     = useRef<P[]>([]);
@@ -61,6 +66,7 @@ export default function Orb({ state, onClick, theme = "dark", emotion = "neutro"
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { emotionRef.current = emotion; }, [emotion]);
+  useEffect(() => { talkingRef.current = talking; }, [talking]);
   useEffect(() => { lightRef.current = theme === "light"; }, [theme]);
 
   useEffect(() => {
@@ -130,12 +136,12 @@ export default function Orb({ state, onClick, theme = "dark", emotion = "neutro"
         gx = 0.22 * Math.sin(now * 0.0006);
         gy = 0.15 * Math.sin(now * 0.00047 + 1.7);
       }
-      if (s === "speaking") {
+      if (s === "speaking" && talkingRef.current) {
         // TTS é áudio pronto (sem analisador): dois LFOs irregulares fazem a boca abrir e fechar como fala
         mouthOpen = Math.max(0, Math.sin(now * 0.021) * Math.sin(now * 0.0067 + 1.3)) * 0.6;
       }
       const live    = applyLife(faceRef.current, { blink, gazeX: gx, gazeY: gy, mouthOpen });
-      const targets = faceTargets(live, ph);
+      const targets = t > 0.01 ? faceTargets(live, ph) : null;   // em wake parado ninguém segue o rosto
       const S       = R * k * FACE_SCALE * (1 + (reduced ? 0 : 0.012 * Math.sin(now * 0.0015)));
       const tremor  = reduced ? 0 : (0.3 + live.jitter * 1.6) * k;
       const hue     = live.hue;
@@ -148,7 +154,7 @@ export default function Orb({ state, onClick, theme = "dark", emotion = "neutro"
         const p = pts[i];
         p.phase += p.phaseSpd;
 
-        if (t > 0.01) {
+        if (targets) {
           const tx = targets[i][0] * S + Math.sin(p.phase * 3.1) * tremor;
           const ty = targets[i][1] * S + Math.cos(p.phase * 2.7) * tremor;
           p.vx += (tx - p.x) * 0.075 * t;
@@ -255,13 +261,16 @@ export default function Orb({ state, onClick, theme = "dark", emotion = "neutro"
         const fade    = 1 - t / 0.08;
         const hs      = R * k * 0.2;
         const ink     = light ? "30,41,70" : "255,255,255";
+        const hr      = 0.5 + k * 0.5;
         ctx.fillStyle = `rgba(${ink},${(0.12 + breathe * 0.08) * (light ? 1.6 : 1) * fade})`;
+        ctx.beginPath();   // um caminho só para os 272 pontos: em wake parado isso roda todo frame
         for (let i = 0; i < FACE_POINTS; i++) {
           if (clusterOf(i) === "dust") continue;
-          ctx.beginPath();
-          ctx.arc(CX + WAKE_HINT[i][0] * hs, CY + WAKE_HINT[i][1] * hs, 0.5 + k * 0.5, 0, TAU);
-          ctx.fill();
+          const hx = CX + WAKE_HINT[i][0] * hs, hy = CY + WAKE_HINT[i][1] * hs;
+          ctx.moveTo(hx + hr, hy);
+          ctx.arc(hx, hy, hr, 0, TAU);
         }
+        ctx.fill();
       }
 
       frameRef.current = requestAnimationFrame(draw);

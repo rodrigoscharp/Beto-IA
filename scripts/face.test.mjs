@@ -180,3 +180,14 @@ test("parseEmotion: resposta que é só a tag ou vazia não quebra", () => {
 test("EMOTION_TAG remove a tag de qualquer texto (defesa da sanitize)", () => {
   assert.equal("[emo:bravo] Oi [emo:x] tudo".replace(EMOTION_TAG, ""), "Oi tudo");
 });
+
+test("parseEmotion: tag colada entre frases não cola as palavras", () => {
+  assert.equal(parseEmotion("Poxa.[emo:alegre]Mas bora.").text, "Poxa. Mas bora.");
+});
+
+test("parseEmotion: tag malformada também sai do texto e cai em neutro", () => {
+  const r = parseEmotion("[emo:alegre e animado ao mesmo tempo] Fechou, chefe.");
+  assert.deepEqual(r, { emotion: "neutro", text: "Fechou, chefe." });
+  assert.equal(parseEmotion("[emoção:alegre] oi").emotion, "alegre");
+  assert.equal(parseEmotion("[emoção:alegre] oi").text, "oi");
+});
