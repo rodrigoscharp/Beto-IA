@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  EMOTIONS, EXPRESSIONS, STATE_FACES, FACE_POINTS, clusterOf, faceTargets, type Face,
+  EMOTIONS, EXPRESSIONS, STATE_FACES, FACE_POINTS, clusterOf, faceTargets, type Emotion, type Face,
 } from "@/components/face";
+import Orb, { type OrbState } from "@/components/Orb";
 
 const SIZE = 240;
 const SCALE = 150;   // pixels por unidade do rosto (boca aberta cabe no quadro)
@@ -32,16 +33,40 @@ function FaceCell({ label, face }: { label: string; face: Face }) {
   );
 }
 
+const STATES: OrbState[] = ["wake", "listening", "thinking", "speaking"];
+
 export default function PreviewFace() {
+  const [live, setLive] = useState(false);
+  const [st, setSt] = useState<OrbState>("speaking");
+  const [emo, setEmo] = useState<Emotion>("neutro");
+  const btn = (on: boolean): React.CSSProperties => ({
+    padding: "6px 10px", borderRadius: 8, border: "1px solid #456", font: "13px system-ui",
+    background: on ? "#2a5" : "#123", color: "#eef", cursor: "pointer",
+  });
   return (
     <main style={{ minHeight: "100vh", background: "#000", padding: 16 }}>
-      <h1 style={{ color: "#dde", font: "600 16px system-ui", marginBottom: 12 }}>Rostos do Beto (dev)</h1>
-      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
-        {EMOTIONS.map((e) => <FaceCell key={e} label={e} face={EXPRESSIONS[e]} />)}
-        {(Object.keys(STATE_FACES) as (keyof typeof STATE_FACES)[]).map((s) => (
-          <FaceCell key={s} label={`estado: ${s}`} face={STATE_FACES[s]} />
-        ))}
+      {live && <Orb state={st} emotion={emo} onClick={() => {}} />}
+      <div style={{ position: "fixed", zIndex: 10, top: 12, right: 12 }}>
+        <button style={btn(live)} onClick={() => setLive(v => !v)}>{live ? "Fechar ao vivo" : "Orb ao vivo"}</button>
       </div>
+      {live && (
+        <div style={{ position: "fixed", zIndex: 10, left: 12, right: 12, bottom: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {STATES.map(s => <button key={s} style={btn(st === s)} onClick={() => setSt(s)}>{s}</button>)}
+          <span style={{ width: 12 }} />
+          {EMOTIONS.map(e => <button key={e} style={btn(emo === e)} onClick={() => setEmo(e)}>{e}</button>)}
+        </div>
+      )}
+      {!live && (
+        <>
+          <h1 style={{ color: "#dde", font: "600 16px system-ui", marginBottom: 12 }}>Rostos do Beto (dev)</h1>
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+            {EMOTIONS.map((e) => <FaceCell key={e} label={e} face={EXPRESSIONS[e]} />)}
+            {(Object.keys(STATE_FACES) as (keyof typeof STATE_FACES)[]).map((s) => (
+              <FaceCell key={s} label={`estado: ${s}`} face={STATE_FACES[s]} />
+            ))}
+          </div>
+        </>
+      )}
     </main>
   );
 }
