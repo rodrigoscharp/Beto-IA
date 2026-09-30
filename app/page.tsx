@@ -418,12 +418,13 @@ export default function JarvisPage() {
   }
 
   /** Toca uma frase pré-gerada na hora. Devolve false se ainda não está no cache (aí cai no TTS normal). */
-  function speakCached(text: string, onDone: () => void): boolean {
+  function speakCached(text: string, onDone: () => void, emotion: Emotion = "neutro"): boolean {
     const url = cachedAudio.current.get(text);
     if (!url || !audioUnlocked.current) return false;
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     window.speechSynthesis?.cancel();
     setMode("speaking");
+    setEmotion(emotion);   // junto do setMode: nenhuma outra fala consegue trocar o rosto no meio do caminho
     setTalking(false);
     setCaption(text);
 
@@ -532,8 +533,7 @@ export default function JarvisPage() {
       lower.includes("pomodoro") ? "Pomodoro finalizado! Hora de uma pausa merecida." :
       lower.includes("pausa")    ? "Pausa encerrada. Bora voltar ao foco!"            :
       `${label} finalizado!`;
-    setEmotion("alegre");
-    speak(msg, () => { setMode("wake"); startWake(); });
+    speak(msg, () => { setMode("wake"); startWake(); }, Promise.resolve(), "alegre");
   }
 
   function getCountdownStatus(): string {
@@ -544,12 +544,13 @@ export default function JarvisPage() {
   /* ── TTS: ElevenLabs with MediaSource streaming, synth fallback ──────── */
 
   /** `gate`: só começa a tocar depois dele (ex.: o filler terminar). O áudio já vai sendo buscado e bufferizado enquanto isso. */
-  function speak(text: string, onDone: () => void, gate: Promise<void> = Promise.resolve()) {
+  function speak(text: string, onDone: () => void, gate: Promise<void> = Promise.resolve(), emotion: Emotion = "neutro") {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     window.speechSynthesis?.cancel();
     // Nada para falar (ex.: a resposta veio só com a tag de emoção): segue o fluxo sem ficar mudo em "speaking".
     if (!text.trim()) { onDone(); return; }
     setMode("speaking");
+    setEmotion(emotion);
     setTalking(false);
     setCaption(text);
 
@@ -1031,13 +1032,13 @@ export default function JarvisPage() {
     if (greeting) {
       const options = GREETINGS[greeting];
       const reply   = options[Math.floor(Math.random() * options.length)]!;
-      history.current = [...history.current, { role: "user", content: text }, { role: "assistant", content: reply }];
-      setEmotion("alegre");   // saudação não passa pelo modelo, então não tem tag
+      // Saudação não passa pelo modelo, então não tem tag: o rosto é alegre e o histórico leva a tag para o modelo ver o formato.
+      history.current = [...history.current, { role: "user", content: text }, { role: "assistant", content: `[emo:alegre] ${reply}` }];
       const after = () => {
         if (!musicPlaying.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
         else { setMode("wake"); setTimeout(startWake, 300); }
       };
-      if (!speakCached(reply, after)) speak(reply, after);
+      if (!speakCached(reply, after, "alegre")) speak(reply, after, Promise.resolve(), "alegre");
       return;
     }
 
@@ -1083,10 +1084,9 @@ export default function JarvisPage() {
       history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${rawReply}` }];
 
       if (fillerTimer) clearTimeout(fillerTimer);
-      setEmotion(emo.emotion);
       // Respostas de conversa/consulta continuam ouvindo; comando de música, timer e memória voltam ao wake word
       // (com música tocando o microfone aberto captaria a letra como se fosse você).
-      const say  = async (t: string, followUp = false) => {
+      const say  = async (t: string, followUp = false, emotion: Emotion = emo.emotion) => {
         // O áudio da resposta já é buscado agora, em paralelo ao filler; só começa a tocar quando o filler acaba.
         speak(sanitize(t), () => {
           if (followUp && !musicPlaying.current && getSR()) {
@@ -1094,7 +1094,7 @@ export default function JarvisPage() {
           } else {
             setMode("wake"); setTimeout(startWake, 300);
           }
-        }, waitFiller());
+        }, waitFiller(), emotion);
       };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
@@ -1119,11 +1119,12 @@ export default function JarvisPage() {
         const r = await execMyHub(myhub.action);
         if ("text" in r) {
           // A frase falada é a que fica no histórico: sem a tag, o modelo não a repete.
-          history.current = [...msgs, { role: "assistant", content: r.text }];
+          history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${r.text}` }];
           say(r.text, true);
         } else {
           // Faltou dado ou ficou ambíguo: o modelo explica e pergunta, e o Beto já volta a ouvir a resposta.
-          say(await askAboutFailure(msgs, myhub.text || "Anotando.", r.error), true);
+          const fail = await askAboutFailure(msgs, myhub.text || "Anotando.", r.error);
+          say(fail.text, true, fail.emotion);
         }
       }
       else                      say(rawReply, true);
@@ -1131,13 +1132,12 @@ export default function JarvisPage() {
     } catch {
       if (fillerTimer) clearTimeout(fillerTimer);
       stopFiller();
-      setEmotion("triste");
-      speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); });
+      speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); }, Promise.resolve(), "triste");
     }
   }
 
   /** Devolve ao modelo o erro do My Hub e retorna a frase que ele fala (uma pergunta curta). */
-  async function askAboutFailure(msgs: Msg[], said: string, erro: string): Promise<string> {
+  async function askAboutFailure(msgs: Msg[], said: string, erro: string): Promise<{ text: string; emotion: Emotion }> {
     const fallback = `Chefe, não consegui registrar: ${erro.replace(/\s*Pergunte[^.]*\.?/i, "").trim()}`;
     try {
       const res  = await fetch("/api/chat", {
@@ -1151,13 +1151,12 @@ export default function JarvisPage() {
       });
       const data = await res.json();
       const emo  = parseEmotion(String(data.reply ?? ""));
-      setEmotion(emo.emotion);
       const text = emo.text.replace(TAG.MYHUB, "").trim() || fallback;
-      history.current = [...msgs, { role: "assistant", content: text }];
-      return text;
+      history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${text}` }];
+      return { text, emotion: emo.emotion };
     } catch {
-      history.current = [...msgs, { role: "assistant", content: fallback }];
-      return fallback;
+      history.current = [...msgs, { role: "assistant", content: `[emo:triste] ${fallback}` }];
+      return { text: fallback, emotion: "triste" };
     }
   }
 

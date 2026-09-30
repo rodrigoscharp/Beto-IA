@@ -80,3 +80,12 @@ Trocar a aura/esfera de partículas do Beto por um rosto plano 2D formado pelas 
 ## Fora de escopo
 
 Reagir ao tom do usuário, amplitude real do áudio na boca, acessórios, animação de corpo.
+
+## Desvios da implementação (registrados depois da revisão)
+
+- **Glow central:** o núcleo branco que ficava no meio da esfera foi removido, porque cobria o espaço entre os olhos. O brilho de fundo (glow ambiente) e os anéis continuam.
+- **Emoção passada como argumento da fala:** `speak(text, onDone, gate, emotion)` define a emoção junto com o modo `speaking`, em vez de um `setEmotion` antes do `await`. Isso evita que um timer ou outra fala troque o rosto no meio do caminho.
+- **Boca sincronizada com o áudio:** o Orb recebe `talking`, ligado no início real da voz (`onplaying`/`onstart`) e desligado no fim. Durante o fetch e o prebuffer do TTS a boca fica parada.
+- **Resposta sem texto:** se depois de tirar a tag não sobra nada para falar, o fluxo segue sem entrar em `speaking`.
+- **Filler:** não ganhou emoção própria; o rosto de `thinking` já é o pensativo.
+- **`prefers-reduced-motion`:** desliga tremor, piscar, deriva do olhar, respiração, explosão ao voltar para `wake` e giro da poeira. A boca continua mexendo enquanto ele fala, porque comunica a fala.

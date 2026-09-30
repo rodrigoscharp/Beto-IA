@@ -101,7 +101,7 @@ export default function Orb({ state, onClick, theme = "dark", emotion = "neutro"
       const reduced = reducedRef.current;
 
       /* ── Explosão ao voltar para wake ── */
-      if (prev !== "wake" && s === "wake") {
+      if (prev !== "wake" && s === "wake" && !reduced) {
         for (const p of pts) {
           const d = Math.hypot(p.x, p.y) || 1;
           const spd = 4 + Math.random() * 4.5;
@@ -141,7 +141,7 @@ export default function Orb({ state, onClick, theme = "dark", emotion = "neutro"
         mouthOpen = Math.max(0, Math.sin(now * 0.021) * Math.sin(now * 0.0067 + 1.3)) * 0.6;
       }
       const live    = applyLife(faceRef.current, { blink, gazeX: gx, gazeY: gy, mouthOpen });
-      const targets = t > 0.01 ? faceTargets(live, ph) : null;   // em wake parado ninguém segue o rosto
+      const targets = t > 0.01 ? faceTargets(live, reduced ? 0 : ph) : null;   // em wake parado ninguém segue o rosto
       const S       = R * k * FACE_SCALE * (1 + (reduced ? 0 : 0.012 * Math.sin(now * 0.0015)));
       const tremor  = reduced ? 0 : (0.3 + live.jitter * 1.6) * k;
       const hue     = live.hue;
