@@ -46,10 +46,22 @@ export async function listMemories(limit = 30): Promise<Memory[]> {
 }
 
 export async function deleteMemory(id: string): Promise<{ ok: boolean }> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("jarvis_memories")
     .delete()
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
 
-  return { ok: !error };
+  return { ok: !error && Array.isArray(data) && data.length > 0 };   // sem linha apagada (RLS, id velho) não é sucesso
+}
+
+/** Como listMemories, mas o erro do banco LANÇA (não vira "lista vazia": o Beto não pode dizer que não sabe nada nem cachear isso). */
+export async function listMemoriesStrict(limit = 30): Promise<Memory[]> {
+  const { data, error } = await supabase
+    .from("jarvis_memories")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) throw new Error(error?.message ?? "Supabase sem resposta.");
+  return data as Memory[];
 }

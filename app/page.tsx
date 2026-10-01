@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
 import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion } from "@/components/face";
-import { claimsWrite, needsTools } from "@/lib/intent";
+import { claimsWrite, needsTools, wantsCalendarWrite, wantsMemoryForget, wantsMemorySave, wantsMyHubWrite } from "@/lib/intent";
 import { ReplyStream, type StreamEvent } from "@/lib/replystream";
 import { SpeechQueue } from "@/lib/speechqueue";
 import type { QuotaInfo } from "@/lib/ops";
@@ -59,7 +59,6 @@ interface SpotifyAction  { action: string; query?: string; level?: number }
 interface GmailAction    { action: string; days?: number; ref?: string }
 interface GithubAction   { action: string; repo?: string }
 interface TimerAction    { action: string; minutes?: number; label?: string }
-interface MemoryAction   { action: string; content?: string; category?: string }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Constants
@@ -73,7 +72,6 @@ const TAG = {
   GITHUB:   /\[GITHUB:(\{[\s\S]*?\})\]\s*/,
   GMAIL:    /\[GMAIL:(\{[\s\S]*?\})\]\s*/,
   TIMER:    /\[TIMER:(\{[\s\S]*?\})\]\s*/,
-  MEMORY:   /\[MEMORY:(\{[\s\S]*?\})\]\s*/,
   BRIEFING: /\[BRIEFING:(\{[\s\S]*?\})\]\s*/,
 };
 
@@ -122,7 +120,7 @@ function sanitize(text: string): string {
   return text
     .replace(EMOTION_TAG, "")     // última defesa: a tag nunca é falada nem vai para a legenda
     .replace(/\[\s*NEED_?TOOLS\s*\]/gi, "")   // idem para o marcador interno de ferramentas
-    .replace(/\[CALENDAR:\{[\s\S]*?\}\]/g, "")  // a agenda é por ferramentas no servidor; a tag antiga nunca executa nada
+    .replace(/\[(?:CALENDAR|MEMORY):\{[\s\S]*?\}\]/g, "")  // agenda e memória são por ferramentas no servidor; a tag antiga nunca executa nada
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`\n]+`/g, "")
     .replace(/^\s*#{1,6}\s+/gm, "")
@@ -740,26 +738,6 @@ export default function JarvisPage() {
     } catch { return "Erro ao buscar o briefing."; }
   }
 
-  async function execMemory(action: MemoryAction, fallback: string): Promise<string> {
-    try {
-      const res  = await fetch("/api/memory/command", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(action),
-      });
-      const data = await res.json();
-      if (action.action === "save") return data.ok ? (fallback || "Anotado, não vou esquecer.") : fallback;
-      if (action.action === "list") {
-        if (!data.memories?.length) return "Ainda não tenho nada guardado sobre você.";
-        const list = data.memories
-          .map((m: { content: string }) => m.content)
-          .join(". ");
-        return `Aqui está o que eu sei sobre você: ${list}.`;
-      }
-      return fallback || "Pronto.";
-    } catch { return fallback || "Erro ao acessar a memória."; }
-  }
-
   /** Registra no My Hub. Sucesso vira a frase falada (vem do My Hub, não do modelo); erro volta ao modelo para ele perguntar o que falta. */
   /* ── MiniPlayer handler (fire-and-forget, no voice feedback) ─────────── */
 
@@ -1000,7 +978,6 @@ export default function JarvisPage() {
       const github   = parseTag<GithubAction>(rawReply,   TAG.GITHUB);
       const gmail    = parseTag<GmailAction>(rawReply,    TAG.GMAIL);
       const timer    = parseTag<TimerAction>(rawReply,    TAG.TIMER);
-      const memory   = parseTag<MemoryAction>(rawReply,   TAG.MEMORY);
       const briefing = parseTag<SpotifyAction>(rawReply,  TAG.BRIEFING);
 
       if      (spotify.action)  say(await execSpotify(spotify.action));
@@ -1008,7 +985,6 @@ export default function JarvisPage() {
       else if (github.action)   say(await execGithub(github.action), true);
       else if (gmail.action)    say(await execGmail(gmail.action), true);
       else if (timer.action)    say(execTimer(timer.action));
-      else if (memory.action)   say(await execMemory(memory.action, memory.text));
       else if (briefing.action) say(await execBriefing(), true);
       else if (alreadySpoken)   endTurn(true);   // o texto já foi falado em streaming; nenhuma ação a executar
       else                      say(rawReply, true);
@@ -1133,7 +1109,8 @@ export default function JarvisPage() {
     const q: SpeechQueue = queue;
     const spoken = parseEmotion(end.full);
     // O modelo sem ferramentas disse que registrou/marcou algo: nada foi feito. Termina de falar e refaz com o prompt completo.
-    if (claimsWrite(spoken.text)) {
+    // (só se o chefe pediu escrita: "o segredo ficou guardado" numa conversa comum não é confirmação falsa)
+    if (claimsWrite(spoken.text) && (wantsCalendarWrite(msgs) || wantsMyHubWrite(msgs) || wantsMemorySave(msgs) || wantsMemoryForget(msgs))) {
       await q.end();
       if (turn !== turnSeq.current || queueRef.current !== q || q.isCancelled()) return { done: true, full: null };
       queueRef.current = null;

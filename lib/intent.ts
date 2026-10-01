@@ -60,6 +60,7 @@ export function needsTools(messages: ChatMsg[]): boolean {
   if (TOOL_WORDS.test(text)) return true;
   if (wantsCalendar(messages)) return true;     // agenda: ferramentas, nunca o streaming de conversa
   if (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) return true;   // registrar no My Hub: ferramentas
+  if (wantsMemory(messages)) return true;                                    // lembrar, esquecer, listar memórias: ferramentas
   if (/\d/.test(text)) return true;           // número quase sempre é valor, hora ou quantidade: prompt completo
 
   // O Beto fez uma pergunta (em qualquer ponto do fim da fala) e a resposta curta é "sim", "pode", "quero"...:
@@ -213,20 +214,93 @@ export function wantsMyHubUndo(messages: ChatMsg[]): boolean {
   if (/\b(desfaz|desfaca|desfazer|desfiz)\b/.test(t)) return true;
   if (/\bapaga (esse|o ultimo) (registro|gasto|lancamento)\b/.test(t)) return true;
   const prev = messages[last.index - 1];
-  return !!prev && prev.role === "assistant" && claimsWrite(prev.content)
+  return !!prev && prev.role === "assistant" && claimsWrite(prev.content) && !/\b(guardei|memoriz\w*|esqueci|salvei|memoria)\b/.test(norm(prev.content))
     && /\b(errei|foi engano|engano meu|era outro valor|valor errado|nao era isso)\b/.test(t);
 }
 
 /** O texto diz que JÁ fez algo (registrou, marcou, cancelou…). Se nenhuma ferramenta de escrita executou, é mentira.
     Frase com negação ("não registrei"), pergunta ("quer que eu anote?") ou fato anterior ("já está registrado") não conta. */
-const CLAIM = /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz)\b/;
+const CLAIM = /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz|guardei|memorizei)\b|\b(salvei|esqueci) (isso|essa|esse|na memoria|que)\b/;
 export function claimsWrite(text: string): boolean {
   for (const sentence of norm(text).split(/(?<=[.!?])\s+/)) {
     const m = CLAIM.exec(sentence);
     if (!m || sentence.trim().endsWith("?")) continue;
     if (/\b(nao|nunca|jamais)\s+(?:(?:o|a|os|as|ainda)\s+)?$/.test(sentence.slice(0, m.index))) continue;   // "não anotei", "ainda não registrei"
-    if (/\bja (esta|estava|foi|ficou)\b/.test(sentence)) continue;
+    if (/\bja (esta|estava|foi|ficou|ta|tinha)\b|\bja (anotei|registrei|guardei|salvei|memorizei)\b/.test(sentence)) continue;
     return true;
   }
   return false;
+}
+
+/* ── Memória ─────────────────────────────────────────────────────────────── */
+
+/* A memória é persistente e entra em todo prompt futuro: salvar e esquecer só com pedido EXPLÍCITO do chefe nesta
+   mensagem (um texto de terceiros nunca pode induzir isso). "me lembra de…" é lembrete, não memória. */
+const REMIND_ME = /\bme (lembra|lembre)\b/;
+const SAVE_STRONG = /\b(lembra|lembre|lembrar|guarda|guarde|guardar|memoriza|memorize|memorizar|grava|grave|gravar)\s+(que|isso|disso|ai)\b|\b(toma|tome|tomar) nota\b/;
+const SAVE_WEAK = /\b(anota|anote|anotar|salva|salve|salvar)\s+(que|isso|disso)\b/;
+const SAVE_OTHER = /\b(nao (esquece|esqueca) que|fica sabendo que|fique sabendo que|saiba que|so pra voce saber|so para voce saber|pode lembrar que|quero que voce lembre)\b/;
+const NOT_MEMORY_SAVE = /\b(para|pare) de lembrar\b|\bnao precisa (mais )?(lembrar|guardar|salvar|anotar)\b|\bnao (guarda|guarde|salva|salve|anota|anote|lembra|lembre|memoriza|memorize|grava|grave)\b|\b(voce|vc) (lembra|lembrou) (que|de)\b|\b(preciso|tenho que|devo|vou|temos que) lembrar\b|\b(no|na|em|pro|pra|para o|para a) (drive|pasta|arquivo|computador|nuvem|dropbox|pen ?drive|celular)\b/;
+
+/** Pergunta do Beto sobre guardar ("quer que eu guarde…?") ou sobre qual esquecer ("qual você quer que eu esqueça?"). */
+function prevMemoryAsk(messages: ChatMsg[], index: number): "save" | "forget" | null {
+  const prev = messages[index - 1];
+  if (!prev || prev.role !== "assistant") return null;
+  const t = norm(prev.content);
+  if (/\bquer que eu (guarde|lembre|memorize|salve|grave)\b/.test(t)) return "save";
+  if (/\bqual\b[^.!?]*\besquec|\bquer que eu esquec|\bquer que eu apague\b|\bqual (delas|dessas)\b/.test(t)) return "forget";
+  return null;
+}
+const SHORT_NO = /^(nao|negativo|deixa|deixa quieto|esquece)\b/;
+
+export function wantsMemorySave(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  if (!last) return false;
+  const t = last.text;
+  if (prevMemoryAsk(messages, last.index) === "save") return words(t) <= 6 && /^(sim|pode|quero|claro|aham|uhum|manda|isso|ok|beleza|por favor)\b/.test(t) && !SHORT_NO.test(t);
+  if (REMIND_ME.test(t) || NOT_MEMORY_SAVE.test(t) || wantsMyHubWrite(messages)) return false;
+  if (SAVE_STRONG.test(t) || SAVE_OTHER.test(t)) return true;
+  return SAVE_WEAK.test(t) && !isCalendarTalk(t) && !(HAS_DAY_TIME.test(t) && HAS_CAL_NOUN.test(t));
+}
+
+const FORGET_VERB = "(?:esquece|esqueca|esquecer|apaga|apague|remove|remova|tira|tire)";
+const MEMORY_REF = "(?:(?:da|a|essa) (?:sua )?memoria|sobre mim|que eu (?:gosto|moro|trabalho|acordo|uso|prefiro|odeio|curto|tenho)|o que eu (?:te )?(?:falei|disse|contei))";
+const FORGET = new RegExp(`\\b${FORGET_VERB}\\b[^.!?]*?\\b${MEMORY_REF}|\\b(?:para|pare) de lembrar\\b|\\bnao precisa mais lembrar\\b|\\bpode esquecer (?:que|isso|disso)\\b|\\besquec(?:e|er) (?:que|o|a|os|as) \\w+`);
+const LET_IT_GO = /\bdeixa (pra|para) la\b|\bdeixa quieto\b|\besquece isso ai\b|\bnao importa\b/;
+
+/** Esquecer algo que o Beto guardou: precisa de referência explícita ("esquece, deixa pra lá" não conta). */
+export function wantsMemoryForget(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  if (!last) return false;
+  const t = last.text;
+  if (prevMemoryAsk(messages, last.index) === "forget") return words(t) <= 6 && !SHORT_NO.test(t) && !LET_IT_GO.test(t);
+  if (LET_IT_GO.test(t) || isCalendarTalk(t) || /\b(evento|reuniao|compromisso)\b/.test(t)) return false;
+  return FORGET.test(t);
+}
+
+const MEMORY_LIST = /\bo que (voce|vc) (sabe|lembra|guardou|tem guardado) (sobre |de )?mim\b|\bquais (sao as |as )?(suas )?memorias\b|\bmostra (as |suas )?(suas )?memorias\b|\bquais coisas (voce|vc) (lembra|sabe)\b/;
+
+export function wantsMemoryList(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  return !!last && MEMORY_LIST.test(last.text);
+}
+
+/** Tema de memória, largo: só decide ANEXAR as ferramentas (quem executa é o portão estrito acima). */
+const MEMORY_TOPIC = /\b(lembr\w*|memoria\w*|guard\w*|grav[ae]\w*|toma\w* nota|anot\w*|esquec\w*|apag\w*)\b/;
+export function wantsMemoryTopic(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  return !!last && MEMORY_TOPIC.test(last.text) && !isCalendarTalk(last.text);
+}
+
+/** O que o CHEFE disse e a que o conteúdo salvo ou a busca de esquecer podem se referir: a última fala dele e, numa
+    resposta curta a uma pergunta do Beto sobre guardar/esquecer, também a pergunta do Beto. */
+export function memoryGroundText(messages: ChatMsg[]): string {
+  const last = lastUserText(messages);
+  if (!last) return "";
+  const ask = prevMemoryAsk(messages, last.index);
+  return ask ? `${norm(messages[last.index - 1].content)} ${last.text}` : last.text;
+}
+
+export function wantsMemory(messages: ChatMsg[]): boolean {
+  return wantsMemorySave(messages) || wantsMemoryForget(messages) || wantsMemoryList(messages);
 }
