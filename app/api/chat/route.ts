@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, groqChatStream, groqComplete, workingModel } from "@/lib/groq";
-import { listMemories } from "@/lib/supabase";
+import { deleteMemory, listMemories, saveMemory } from "@/lib/supabase";
 import { getMyHubContext, myHubDesfazer, myHubRegistrar, myHubWriteConfigured, type MyHubContext } from "@/lib/myhub";
 import { myHubPromptBlock } from "@/lib/myhubprompt";
 import { getBrasiliaTime } from "@/lib/time";
-import { claimsWrite, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
+import { claimsWrite, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMemory, wantsMemoryForget, wantsMemorySave, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
 import { runToolLoop, type LoopMsg } from "@/lib/toolloop";
 import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/calendar";
 import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
 import { MYHUB_TOOLS, executeMyHubTool, type MyHubCtx } from "@/lib/tools/myhub";
+import { MEMORY_TOOLS, executeMemoryTool, type MemoryCtx } from "@/lib/tools/memory";
 import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 
@@ -20,19 +21,19 @@ function logMetric(data: Record<string, unknown>) {
   console.log("[beto-metrics]", JSON.stringify({ evt: "chat", ...data }));
 }
 
-function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean } = {}) {
+function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean; memory?: boolean } = {}) {
   const t = getBrasiliaTime();
   return buildSystemPrompt(
     {
       memories,
       myhubBlock: myHubPromptBlock(myhub, t.date, { writeConfigured: myHubWriteConfigured(), tools: !!tools.myhub }),
-      date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar,
+      date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar, memory: !!tools.memory,
     },
     mode,
   );
 }
 
-interface ToolSets { calendar: boolean; myhub: boolean }
+interface ToolSets { calendar: boolean; myhub: boolean; memory: boolean }
 
 /** O navegador guarda o último caminho de desfazer do My Hub e o reenvia aqui; valida o formato e limita o tamanho. */
 function parseUndo(raw: unknown): { path: string | null; resumo: string; ts: number } | null {
@@ -45,7 +46,7 @@ function parseUndo(raw: unknown): { path: string | null; resumo: string; ts: num
 interface UndoState { path: string | null; resumo: string; ts: number }
 
 /** Estados de resultado que significam "a ferramenta de escrita realmente fez o que o chefe pediu". */
-const WRITE_DONE = new Set(["created", "updated", "deleted", "registered", "undone"]);
+const WRITE_DONE = new Set(["created", "updated", "deleted", "registered", "undone", "saved", "forgotten"]);
 
 const CORRECTION = "[SISTEMA] Você disse que já fez, mas nenhuma ferramenta de escrita foi executada com sucesso, então NADA foi feito. Chame agora a ferramenta certa, ou diga o que falta. Não diga que fez sem a ferramenta.";
 
@@ -79,9 +80,17 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
     state: { writes: 0, seen: [] },
   };
 
+  const memCtx: MemoryCtx = {
+    api: memoryConfigured()
+      ? { list: async (n) => (await listMemories(n)).flatMap((m) => (m.id ? [{ id: m.id, content: m.content, category: m.category, created_at: m.created_at }] : [])), save: saveMemory, remove: deleteMemory }
+      : null,
+    saveIntent: wantsMemorySave(messages), forgetIntent: wantsMemoryForget(messages),
+    state: { saves: 0, forgets: 0 },
+  };
+
   let needsLogin = false;
   let acted = false;
-  const tools = [...(sets.calendar ? CALENDAR_TOOLS : []), ...(sets.myhub ? MYHUB_TOOLS : [])];
+  const tools = [...(sets.calendar ? CALENDAR_TOOLS : []), ...(sets.myhub ? MYHUB_TOOLS : []), ...(sets.memory ? MEMORY_TOOLS : [])];
   const system = promptFor("full", memories, myhub, sets);
 
   const loop = (extra: LoopMsg[] = []) => runToolLoop({
@@ -99,7 +108,10 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
     },
     execute: async (name, args) => {
       try {
-        const r = name.startsWith("my_hub_") ? await executeMyHubTool(name, args, hubCtx) : await executeCalendarTool(name, args, calCtx);
+        const r = name.startsWith("my_hub_") ? await executeMyHubTool(name, args, hubCtx)
+          : name.startsWith("memory_") ? await executeMemoryTool(name, args, memCtx)
+          : await executeCalendarTool(name, args, calCtx);
+        if (memCtx.state.changed) _memCache = null;   // a próxima conversa já enxerga o que foi guardado ou esquecido
         if ((r as { needsLogin?: boolean })?.needsLogin) needsLogin = true;
         if (WRITE_DONE.has((r as { status?: string })?.status ?? "")) acted = true;
         return r;
@@ -113,9 +125,9 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
   let result = await loop();
 
   // O modelo pediu [NEEDTOOLS] mesmo com ferramentas (ligamos só um conjunto e o pedido era de outro): liga todas, uma vez.
-  const all: ToolSets = { calendar: true, myhub: myHubWriteConfigured() };
+  const all: ToolSets = { calendar: true, myhub: myHubWriteConfigured(), memory: memoryConfigured() };
   // Só se NENHUMA escrita aconteceu (leituras e recusas não têm efeito): refazer depois de gravar duplicaria o registro.
-  if (detectNeedTools(result.text) === "yes" && !acted && !hubCtx.state.uncertain && hubCtx.state.writes === 0 && (sets.calendar !== all.calendar || sets.myhub !== all.myhub)) {
+  if (detectNeedTools(result.text) === "yes" && !acted && !hubCtx.state.uncertain && hubCtx.state.writes === 0 && (sets.calendar !== all.calendar || sets.myhub !== all.myhub || sets.memory !== all.memory)) {
     return replyWithTools(req, apiKey, messages, memories, all, undoIn);
   }
   const calls = [...result.calls];
@@ -124,7 +136,7 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
 
   // Rede de proteção: disse que registrou/marcou/cancelou, o chefe pediu escrita e nada foi feito. Refaz uma vez.
   // (Não refaz se o My Hub não respondeu a tempo: ele pode ter gravado, e refazer duplicaria.)
-  if (!acted && !hubCtx.state.uncertain && (calWrite || hubWrite) && claimsWrite(text)) {
+  if (!acted && !hubCtx.state.uncertain && (calWrite || hubWrite || memCtx.saveIntent || memCtx.forgetIntent) && claimsWrite(text)) {
     result = await loop([{ role: "assistant", content: text }, { role: "user", content: CORRECTION }]);
     calls.push(...result.calls);
     steps += result.steps;
@@ -142,6 +154,8 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
     undo: hubCtx.state.undone ? ("clear" as const) : hubCtx.state.undo ?? null,
   };
 }
+
+const memoryConfigured = () => !!(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
 
 // Cache memórias por 5 min para não bater no Supabase a cada mensagem
 let _memCache: { data: { content: string; category: string }[]; ts: number } | null = null;
@@ -263,8 +277,8 @@ export async function POST(req: NextRequest) {
     let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
     const hubOn = myHubWriteConfigured();
-    const wanted: ToolSets = { calendar: wantsCalendar(messages), myhub: hubOn && (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) };
-    const everything: ToolSets = { calendar: true, myhub: hubOn };
+    const wanted: ToolSets = { calendar: wantsCalendar(messages), myhub: hubOn && (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)), memory: memoryConfigured() && wantsMemory(messages) };
+    const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured() };
     const viaTools = async (sets: ToolSets) => {
       const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
       needsGoogleLogin = r.needsLogin;
@@ -276,7 +290,7 @@ export async function POST(req: NextRequest) {
     };
     // Pedido de agenda ou de registro no My Hub: o prompt completo vai junto com as ferramentas do que foi pedido.
     // (`full` do cliente só força o prompt completo; não liga ferramentas por si.)
-    if (mode === "full" && (wanted.calendar || wanted.myhub)) {
+    if (mode === "full" && (wanted.calendar || wanted.myhub || wanted.memory)) {
       reply = await viaTools(wanted);
     } else {
       reply = await run(mode, myhub);
@@ -285,7 +299,7 @@ export async function POST(req: NextRequest) {
         retried = true;
         usedMode = "full";
         reply = await viaTools(everything);
-      } else if (claimsWrite(reply) && (wantsCalendarWrite(messages) || wantsMyHubWrite(messages))) {
+      } else if (claimsWrite(reply) && (wantsCalendarWrite(messages) || wantsMyHubWrite(messages) || wantsMemorySave(messages) || wantsMemoryForget(messages))) {
         // Disse que registrou/marcou sem ferramenta nenhuma: nada foi feito. Refaz com todas.
         retried = true;
         usedMode = "full";
