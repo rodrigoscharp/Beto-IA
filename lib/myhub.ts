@@ -81,7 +81,7 @@ export const myHubWriteConfigured = () => !!(process.env.MYHUB_URL && process.en
 
 export type MyHubWriteResult =
   | { ok: true; acao: { titulo: string; resumo: string; campos: { label: string; valor: string }[]; desfazer?: string } }
-  | { ok: false; erro: string };
+  | { ok: false; erro: string; incerto?: boolean };   // incerto: o My Hub pode ter gravado mesmo assim (demorou, caiu a conexão)
 
 async function postWrite(path: string, body: unknown): Promise<Response> {
   const base = process.env.MYHUB_URL!.replace(/\/+$/, "");
@@ -101,12 +101,12 @@ export async function myHubRegistrar(acao: string, entrada: unknown): Promise<My
     // MYHUB_DEFAULT_ACCOUNT: conta usada quando ele não diz qual (evita perguntar "Carteira ou PJ?" toda vez).
     const dados = normalizarEntrada(acao, entrada, { conta: process.env.MYHUB_DEFAULT_ACCOUNT });
     const res = await postWrite("beto-acao", { acao, entrada: dados });
-    if (!res.ok) return { ok: false, erro: `O My Hub respondeu ${res.status}.` };
+    if (!res.ok) return { ok: false, erro: `O My Hub respondeu ${res.status}.`, ...(res.status >= 500 ? { incerto: true } : {}) };
     const data = (await res.json()) as MyHubWriteResult;
     if (data.ok) invalidateMyHubContext();
     return data;
   } catch {
-    return { ok: false, erro: "Não consegui falar com o My Hub agora." };
+    return { ok: false, erro: "Não consegui falar com o My Hub agora.", incerto: true };
   }
 }
 

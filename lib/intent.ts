@@ -135,7 +135,7 @@ export function wantsCalendarWrite(messages: ChatMsg[]): boolean {
    Beto tem de ser a pergunta sobre a mudança. O servidor ainda confere se essa pergunta cita o evento (lib/tools). */
 const CONFIRM_TOKENS = new Set(["sim", "pode", "confirma", "confirmo", "confirmado", "claro", "isso", "mesmo", "ok", "beleza", "aham", "uhum",
   "fechado", "certeza", "com", "positivo", "faz", "manda", "ver", "vai", "la", "por", "favor", "chefe", "beto", "ser", "cancelar", "apagar",
-  "remarcar", "mudar", "marcar"]);
+  "remarcar", "mudar", "marcar", "registrar", "registra", "anotar", "anota", "lancar", "lanca"]);
 const STRONG_YES = new Set(["sim", "pode", "confirma", "confirmo", "confirmado", "claro", "isso", "ok", "beleza", "aham", "uhum", "fechado", "positivo", "faz", "manda", "vai"]);
 const CONFIRM_QUESTION = /(cancel|apag|delet|remov|exclu|remarc|remarq|mov|alter|mud|troc|marc|marq|agend|cri|coloc|conflit|confirm|regist|lanc|anot|adicion)/;
 
@@ -157,8 +157,9 @@ export function userConfirmed(messages: ChatMsg[]): boolean {
 
 const MONEY_VERB = /\b(gastei|paguei|comprei|recebi|ganhei|abasteci|almocei|jantei|depositei|transferi)\b/;
 const MONEY_CUE = /(^|\s|r\$)\d|\b(reais|real|conto|pila|mil|centavos)\b/;   // número solto (45, 1.500), não dígito dentro de palavra
-const QUESTION = /\b(quanto|quantos|quantas|qual|quais|como|onde|quando|por que|porque)\b/;
-const ACTIVITY_VERB = /\b(bebi|treinei|estudei|meditei|dormi|corri|caminhei|malhei|pedalei|nadei)\b/;
+const QUESTION = /\b(quanto|quantos|quantas|qual|quais|como|onde|quando|por que|porque|saber|sera que|me diz|me fala|me conta)\b/;
+const ACTIVITY_VERB = /\b(bebi|treinei|estudei|meditei|corri|caminhei|malhei|pedalei|nadei)\b/;
+const MUSIC = /\b(toca|tocar|toque|musica|spotify|playlist|album)\b/;
 const REGISTER_VERB = /\b(anota|anote|registra|registre|lanca|lance|adiciona|adicione|coloca|bota|marca|marque|cria|crie)\b/;
 const REGISTER_NOUN = /\b(gasto|gastos|despesa|despesas|receita|receitas|transacao|tarefa|tarefas|habito|habitos|meta|metas|treino|estudo|projeto)\b/;
 
@@ -167,28 +168,49 @@ export function wantsMyHubWrite(messages: ChatMsg[]): boolean {
   const last = lastUserText(messages);
   if (!last) return false;
   const t = last.text;
-  // Pergunta é consulta ("quanto gastei em 2025?"), nunca registro. Só o "sim" a uma pergunta de valor (abaixo) escapa disso.
-  const consulta = QUESTION.test(t) || t.trim().endsWith("?");
-  if (!consulta) {
+  // Pergunta é consulta ("quanto gastei em 2025?"), nunca registro. (O "?" sozinho não decide: a voz põe "?" em tudo.)
+  const consulta = QUESTION.test(t);
+  if (!consulta && !MUSIC.test(t)) {
     if (MONEY_VERB.test(t) && MONEY_CUE.test(t)) return true;
     if (ACTIVITY_VERB.test(t)) return true;
     if (REGISTER_VERB.test(t) && REGISTER_NOUN.test(t)) return true;
     if (REGISTER_VERB.test(t) && MONEY_CUE.test(t) && !isCalendarTalk(t)) return true;
   }
-  // O "sim" a uma pergunta de valor ("Registro uma despesa de R$ 1.500?") também libera o registro.
   const prev = messages[last.index - 1];
-  return userConfirmed(messages) && !!prev && /(r\$|reais|valor|conto|pila)/.test(norm(prev.content));
+  if (prev && prev.role === "assistant") {
+    const p = norm(prev.content);
+    // Resposta curta a uma pergunta de registro do Beto ("Qual conta?" -> "PJ"): completa o dado que faltava.
+    if (words(t) <= 6 && p.slice(-220).includes("?") && /(registr|anot|lanc|conta|categoria|quanto foi|valor)/.test(p)
+        && !CALENDAR_QUESTION.test(p)) return true;
+    // O "sim" a uma pergunta de valor ("Registro uma despesa de R$ 1.500?") também libera o registro.
+    if (userConfirmed(messages) && /(r\$|reais|valor|conto|pila)/.test(p)) return true;
+  }
+  return false;
 }
 
-/** "desfaz", "errei", "foi engano": desfazer o último registro do My Hub. */
+/** "desfaz": desfazer o último registro do My Hub. "errei"/"foi engano" só contam logo depois de o Beto dizer que registrou. */
 export function wantsMyHubUndo(messages: ChatMsg[]): boolean {
   const last = lastUserText(messages);
   if (!last) return false;
-  if (/\bnao\b/.test(last.text)) return false;
-  return /\b(desfaz|desfaca|desfazer|desfiz|errei|foi engano|cancela (isso|esse|o ultimo)|apaga esse registro|volta atras)\b/.test(last.text);
+  const t = last.text;
+  if (/\bnao (desfaz|desfaca|desfazer)\b/.test(t)) return false;
+  if (/\b(desfaz|desfaca|desfazer|desfiz)\b/.test(t)) return true;
+  if (/\bapaga (esse|o ultimo) (registro|gasto|lancamento)\b/.test(t)) return true;
+  const prev = messages[last.index - 1];
+  return !!prev && prev.role === "assistant" && claimsWrite(prev.content)
+    && /\b(errei|foi engano|engano meu|era outro valor|valor errado|nao era isso)\b/.test(t);
 }
 
-/** O texto diz que JÁ fez algo (registrou, marcou, cancelou…). Se nenhuma ferramenta de escrita executou, é mentira. */
+/** O texto diz que JÁ fez algo (registrou, marcou, cancelou…). Se nenhuma ferramenta de escrita executou, é mentira.
+    Frase com negação ("não registrei"), pergunta ("quer que eu anote?") ou fato anterior ("já está registrado") não conta. */
+const CLAIM = /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz)\b/;
 export function claimsWrite(text: string): boolean {
-  return /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz)\b/.test(norm(text));
+  for (const sentence of norm(text).split(/(?<=[.!?])\s+/)) {
+    const m = CLAIM.exec(sentence);
+    if (!m || sentence.trim().endsWith("?")) continue;
+    if (/\b(nao|nunca|sem)\b/.test(sentence.slice(0, m.index))) continue;
+    if (/\bja (esta|estava|foi|ficou)\b/.test(sentence)) continue;
+    return true;
+  }
+  return false;
 }

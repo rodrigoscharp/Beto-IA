@@ -246,11 +246,11 @@ test("wantsMyHubWrite: o 'sim' a uma pergunta de valor conta; a outra pergunta q
 });
 
 test("wantsMyHubUndo: desfazer o último registro", () => {
-  for (const t of ["desfaz", "desfaz isso por favor", "errei, desfaz o último", "foi engano", "cancela isso", "volta atrás nesse registro"]) {
+  for (const t of ["desfaz", "desfaz isso por favor", "errei, desfaz o último"]) {
     assert.equal(wantsMyHubUndo([u(t)]), true, t);
   }
-  for (const t of ["não desfaz nada", "como foi meu dia", "desfazer a mala é chato"]) {
-    assert.equal(wantsMyHubUndo([u(t)]), t === "desfazer a mala é chato" ? true : false, t);
+  for (const t of ["não desfaz nada", "como foi meu dia"]) {
+    assert.equal(wantsMyHubUndo([u(t)]), false, t);
   }
 });
 
@@ -264,7 +264,7 @@ test("claimsWrite: o texto diz que registrou/marcou/cancelou", () => {
 });
 
 test("registrar no My Hub e desfazer nunca vão pelo streaming de conversa", () => {
-  for (const t of ["almocei por aqui hoje e gastei 35", "foi engano aquilo ali", "desfaz esse último registro por favor", "bebi bastante água hoje cedo"]) {
+  for (const t of ["almocei por aqui hoje e gastei 35", "desfaz esse último registro por favor", "bebi bastante água hoje cedo"]) {
     assert.equal(needsTools([u(t)]), true, t);
   }
 });
@@ -276,5 +276,60 @@ test("consulta com número ('quanto gastei em 2025?') NÃO é pedido de registro
   }
   for (const t of ["gastei 45 no mercado", "paguei 300 reais de luz", "anota 20 de uber", "registra 1500 de freela", "gastei 45,50 no café"]) {
     assert.equal(wantsMyHubWrite([u(t)]), true, t);
+  }
+});
+
+/* ── Revisão do My Hub (lote 2) ─────────────────────────────────────────── */
+
+test("confirmar um registro alto também com 'pode registrar', 'pode anotar', 'pode lançar'", () => {
+  const q = ask("Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?");
+  for (const t of ["sim, pode registrar", "pode anotar", "pode lançar", "pode registrar sim"]) {
+    assert.equal(userConfirmed([q, u(t)]), true, t);
+    assert.equal(wantsMyHubWrite([q, u(t)]), true, t);
+  }
+});
+
+test("completar o dado que faltava: 'PJ', '45 reais', 'foi 45' depois de uma pergunta de registro", () => {
+  for (const [q, r] of [["Qual conta: Carteira ou PJ?", "PJ"], ["Qual foi o valor?", "45 reais"], ["Em qual categoria você quer lançar?", "foi mercado"], ["Quanto foi?", "foi 45"]]) {
+    assert.equal(wantsMyHubWrite([u("gastei no mercado hoje"), ask(q), u(r)]), true, `${q} -> ${r}`);
+  }
+  assert.equal(wantsMyHubWrite([ask("Quer o briefing do dia?"), u("PJ")]), false);
+  assert.equal(wantsMyHubWrite([ask("Cancelo a reunião com o João amanhã às 15h?"), u("pode ser")]), false);
+  assert.equal(wantsMyHubWrite([ask("Qual conta: Carteira ou PJ?"), u("então me explica como funciona o orçamento da empresa por favor")]), false, "resposta longa não é complemento");
+});
+
+test("'gastei 45 no mercado?' (a voz põe '?') ainda é registro; consulta de verdade não", () => {
+  assert.equal(wantsMyHubWrite([u("gastei 45 no mercado?")]), true);
+  for (const t of ["quero saber se gastei 200 no mercado", "será que gastei 200 no mercado", "me diz quanto gastei com 50 reais", "queria saber o que paguei 30 reais"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), false, t);
+  }
+});
+
+test("falsos positivos de registro: dormir mal e música que 'custou' dinheiro", () => {
+  for (const t of ["dormi mal hoje", "toca a música que eu paguei 10 reais", "coloca a playlist que eu comprei por 20 reais"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), false, t);
+  }
+});
+
+test("wantsMyHubUndo mais preciso: sem 'cancela isso', 'volta atrás' soltos e sem 'errei' fora de contexto", () => {
+  for (const t of ["cancela isso", "volta atrás", "errei o nome da playlist", "não desfaz nada", "como foi meu dia"]) {
+    assert.equal(wantsMyHubUndo([u(t)]), false, t);
+  }
+  for (const t of ["desfaz", "desfaz o último registro", "desfaz esse gasto por favor", "apaga esse registro"]) {
+    assert.equal(wantsMyHubUndo([u(t)]), true, t);
+  }
+  const claimed = ask("Anotei, chefe: Despesa de R$ 60,00 em Mercado.");
+  assert.equal(wantsMyHubUndo([claimed, u("errei, era 45")]), true);
+  assert.equal(wantsMyHubUndo([claimed, u("não, foi engano, era 45")]), true);
+  assert.equal(wantsMyHubUndo([ask("Tudo certo por aqui."), u("errei, era 45")]), false);
+});
+
+test("claimsWrite entende negação, pergunta e fato anterior (sem empurrar o modelo a gravar sem dado)", () => {
+  for (const t of ["Ainda não registrei nada.", "Não anotei porque falta o valor.", "Já está registrado.", "Quer que eu anote? Posso registrar agora.",
+    "Não consegui marcar, chefe.", "Falta a conta para eu registrar."]) {
+    assert.equal(claimsWrite(t), false, t);
+  }
+  for (const t of ["Anotei, chefe.", "Fechou. Registrei o gasto de R$ 45.", "Marquei a reunião e cancelei o almoço."]) {
+    assert.equal(claimsWrite(t), true, t);
   }
 });

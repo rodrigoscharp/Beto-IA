@@ -22,7 +22,7 @@ test("sem escrita configurada: só leitura, e avisa que registrar é direto no M
 test("com ferramentas: instruções de ferramenta, catálogo, nomes e regra de valor; nenhuma tag antiga", () => {
   const p = myHubPromptBlock(ctx, "2026-10-02", { writeConfigured: true, tools: true });
   for (const k of ["my_hub_register", "my_hub_undo", "registrarTransacao", "registrarCheckinHabito", "Carteira, PJ", "Mercado, Gasolina",
-    "ask_with", "needs_confirmation", "status registered", "2026-10-02", "treino de academia"]) assert.ok(p.includes(k), k);
+    "ask_with", "ALGARISMOS", "NÚMERO em reais", "needs_confirmation", "status registered", "2026-10-02", "treino de academia"]) assert.ok(p.includes(k), k);
   assert.ok(!p.includes("[MYHUB:"), "sem tag");
 });
 

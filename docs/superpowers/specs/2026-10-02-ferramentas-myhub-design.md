@@ -37,3 +37,15 @@ Saem do navegador: `execMyHub`, `askAboutFailure`, a leitura da tag `[MYHUB:…]
 - Sem My Hub real aqui: a validação usa um My Hub falso (contexto, registrar, desfazer) e a Groq falsa. **O comportamento de cada modelo real com a ferramenta só aparece em produção.** O My Hub continua sendo quem valida e recusa o ambíguo.
 - O catálogo de ações é texto livre vindo do My Hub; o servidor só exige que `acao` seja um identificador simples (letras) e deixa o My Hub recusar o que não conhece.
 - Memória, Gmail e GitHub ficam para as próximas rodadas.
+
+## Correções depois da revisão independente
+
+- **Valor lido de forma estrita:** o campo de valor (`valorEmReais`, `valor`, `quantia`, `amount`, `total`, `valorEmCentavos`…) só vale em formatos sem ambiguidade ("1.500", "1.500,50", "45,5", "45.5", "R$ 30"). "mil e quinhentos", "2 mil", "1k", "1e4", "1,500", negativo, zero, NaN e Infinity são **recusados** com a instrução de mandar número; nada disso chega cru ao My Hub.
+- **O My Hub recebe o número já interpretado** ("1.500" vira 1500 em `valorEmReais`), nunca o texto que ele poderia ler diferente (antes, "1.500" confirmado podia gravar R$ 1,50).
+- **A trava de R$ 1.000 vale para qualquer ação e qualquer campo de valor** (maiúsculas diferentes, `pagarFatura`, aporte, centavos), não só `registrarTransacao`.
+- **O "sim" vale para o registro perguntado:** a última frase do Beto precisa citar o valor, o tipo (despesa ou receita), a categoria e a descrição que serão gravados; e só **um** registro alto por mensagem. A frase pronta (`ask_with`) não leva "?" nem "ou" da descrição, e o prompt manda usar algarismos nela.
+- **Desfazer:** na mesma mensagem, desfaz o registro que acabou de ser feito (não o antigo do navegador). "errei" e "foi engano" só contam logo depois de o Beto dizer que registrou; "cancela isso" e "volta atrás" soltos saíram.
+- **My Hub que demora:** se a resposta não chega (ele pode ter gravado), o registro vira `uncertain`, conta como feito, não é repetido e o Beto manda conferir no My Hub.
+- **Rede de proteção:** `claimsWrite` entende negação ("não registrei"), pergunta e fato anterior ("já está registrado"); não refaz quando o My Hub ficou incerto.
+- **Roteamento:** "gastei 45 no mercado?" (a voz põe "?") é registro; "quero saber se gastei…" e "toca a música que paguei 10 reais" não; resposta curta a uma pergunta de registro ("PJ", "foi 45") completa o dado que faltava; confirmar também com "pode registrar", "pode anotar", "pode lançar".
+- `[NEEDTOOLS]` dentro do laço liga todos os conjuntos de ferramentas; o caminho de desfazer vindo do navegador é validado (só ASCII visível, até 300 caracteres).

@@ -98,9 +98,13 @@ test("confirmação do valor: só vale se o 'sim' veio depois de uma pergunta qu
   const naoConf = await run("my_hub_register", gasto(1500), ctx(api, { confirmed: false, lastAssistant: "registro uma despesa de R$ 1.500,00 em mercado?" }));
   assert.equal(naoConf.status, "needs_confirmation");
   assert.equal(api.calls.length, 0);
-  for (const frase of ["Registro uma despesa de R$ 1.500,00 em Mercado?", "registro 1500 reais de mercado?", "Anoto 1.500 no mercado?"]) {
+  for (const frase of ["Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?", "registro uma despesa de 1500 reais, mercado da semana, em mercado?"]) {
     const ok = await run("my_hub_register", gasto(1500), ctx(fakeApi(), { confirmed: true, lastAssistant: frase }));
     assert.equal(ok.status, "registered", frase);
+  }
+  for (const frase of ["Anoto 1.500 no mercado?", "Registro uma despesa de R$ 1.500,00 em Mercado?"]) {
+    const nao = await run("my_hub_register", gasto(1500), ctx(fakeApi(), { confirmed: true, lastAssistant: frase }));
+    assert.equal(nao.status, "needs_confirmation", `${frase}: faltou o tipo ou a descrição`);
   }
 });
 
@@ -132,4 +136,100 @@ test("desfazer: sem pedido, sem registro, registro velho, sem caminho e falha", 
   assert.equal((await run("my_hub_undo", {}, ctx(api, { undoIntent: true, undo: { path: null, resumo: "x", ts: NOW } }))).status, "cannot_undo");
   assert.equal((await run("my_hub_undo", {}, ctx(fakeApi({ undoOk: false }), { undoIntent: true, undo: { path: "p", resumo: "x", ts: NOW } }))).status, "failed");
   assert.equal(api.calls.length, 0);
+});
+
+/* ── Revisão do My Hub ──────────────────────────────────────────────────── */
+
+test("valor que não vira número positivo é RECUSADO (nunca passa cru para o My Hub)", async () => {
+  for (const v of ["mil e quinhentos", "2 mil", "1k", "1e4", -5000, "-5000", NaN, Infinity, "abc", "1,500", 0, "0"]) {
+    const api = fakeApi();
+    const r = await run("my_hub_register", gasto(v), ctx(api));
+    assert.match(r.error ?? "", /valor/i, String(v));
+    assert.equal(api.calls.length, 0, `${String(v)} não pode chegar ao My Hub`);
+  }
+});
+
+test("o My Hub recebe o número JÁ interpretado: '1.500' vira 1500, '45,50' vira 45.5, 'valor' vira valorEmReais", async () => {
+  const api = fakeApi();
+  await run("my_hub_register", gasto("1.500"), ctx(api, { confirmed: true, lastAssistant: "Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?" }));
+  assert.equal(api.calls[0][2].valorEmReais, 1500);
+  const api2 = fakeApi();
+  await run("my_hub_register", gasto("45,50"), ctx(api2));
+  assert.equal(api2.calls[0][2].valorEmReais, 45.5);
+  const api3 = fakeApi();
+  await run("my_hub_register", { acao: "registrarTransacao", entrada: { tipo: "despesa", valor: "R$ 30", descricao: "x", categoria: "Mercado" } }, ctx(api3));
+  assert.equal(api3.calls[0][2].valorEmReais, 30);
+  assert.ok(!("valor" in api3.calls[0][2]));
+});
+
+test("a trava vale para qualquer ação com campo de valor e para maiúsculas diferentes", async () => {
+  for (const [acao, entrada] of [
+    ["RegistrarTransacao", { tipo: "despesa", valorEmReais: 9000, descricao: "x" }],
+    ["registrarTransacao", { tipo: "despesa", quantia: 9000, descricao: "x" }],
+    ["registrarTransacao", { tipo: "despesa", amount: 9000, descricao: "x" }],
+    ["pagarFatura", { valorEmReais: 2000 }],
+    ["registrarAporte", { valor: 5000, meta: "Viagem" }],
+    ["registrarTransacao", { tipo: "despesa", valorEmCentavos: 250000, descricao: "x" }],
+  ]) {
+    const api = fakeApi();
+    const r = await run("my_hub_register", { acao, entrada }, ctx(api));
+    assert.equal(r.status, "needs_confirmation", `${acao} ${JSON.stringify(entrada)}`);
+    assert.equal(api.calls.length, 0);
+  }
+  const api = fakeApi();
+  assert.equal((await run("my_hub_register", { acao: "registrarCheckinHabito", entrada: { habito: "Beber água", quantidade: 5000 } }, ctx(api))).status, "registered");
+  assert.equal((await run("my_hub_register", { acao: "pagarFatura", entrada: { valorEmReais: 200 } }, ctx(api))).status, "registered");
+});
+
+test("o 'sim' vale só para O registro perguntado: tipo, categoria e descrição têm de bater", async () => {
+  const q = "Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?";
+  const ok = await run("my_hub_register", gasto(1500), ctx(fakeApi(), { confirmed: true, lastAssistant: q }));
+  assert.equal(ok.status, "registered");
+  const receita = await run("my_hub_register", gasto(1500, { tipo: "receita" }), ctx(fakeApi(), { confirmed: true, lastAssistant: q }));
+  assert.equal(receita.status, "needs_confirmation", "perguntou despesa e o modelo quer gravar receita");
+  const outraCat = await run("my_hub_register", gasto(1500, { categoria: "Gasolina" }), ctx(fakeApi(), { confirmed: true, lastAssistant: q }));
+  assert.equal(outraCat.status, "needs_confirmation");
+  const outraDesc = await run("my_hub_register", gasto(1500, { descricao: "Joias" }), ctx(fakeApi(), { confirmed: true, lastAssistant: q }));
+  assert.equal(outraDesc.status, "needs_confirmation");
+});
+
+test("o valor só conta na ÚLTIMA frase (pergunta), não em frases anteriores do Beto", async () => {
+  const fala = "Anotei, chefe: despesa de R$ 1.500,00 em Mercado. Quer registrar mais alguma coisa?";
+  const r = await run("my_hub_register", gasto(1500), ctx(fakeApi(), { confirmed: true, lastAssistant: fala }));
+  assert.equal(r.status, "needs_confirmation");
+});
+
+test("um 'sim' libera UM registro alto por requisição", async () => {
+  const q = "Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?";
+  const api = fakeApi(); const c = ctx(api, { confirmed: true, lastAssistant: q });
+  assert.equal((await run("my_hub_register", gasto(1500), c)).status, "registered");
+  const segundo = await run("my_hub_register", gasto(1500, { descricao: "Mercado da semana", conta: "PJ" }), c);
+  assert.match(segundo.error ?? "", /alto/i);
+  assert.equal(api.calls.filter((x) => x[0] === "register").length, 1);
+});
+
+test("ask_with não leva '?' nem ' ou ' da descrição (senão o 'sim' nunca confirma)", async () => {
+  const r = await run("my_hub_register", gasto(1500, { descricao: "Uber ou 99?" }), ctx(fakeApi()));
+  assert.ok(!/\bou\b/i.test(r.ask_with), r.ask_with);
+  assert.equal((r.ask_with.match(/\?/g) ?? []).length, 1, "só o ? final");
+});
+
+test("desfazer na MESMA requisição apaga o registro que acabou de ser feito, não o antigo do navegador", async () => {
+  const api = fakeApi(); const c = ctx(api, { undoIntent: true, undo: { path: "/antigo", resumo: "antigo", ts: NOW - 60_000 } });
+  await run("my_hub_register", gasto(60), c);
+  const r = await run("my_hub_undo", {}, c);
+  assert.equal(r.status, "undone");
+  assert.deepEqual(api.calls.at(-1), ["undo", "tx/1"], "o caminho do registro novo");
+});
+
+test("My Hub não respondeu a tempo (pode ter gravado): não duplica e manda conferir", async () => {
+  const api = fakeApi({ registerResult: { ok: false, erro: "Não consegui falar com o My Hub agora.", incerto: true } });
+  const c = ctx(api);
+  const r = await run("my_hub_register", gasto(45), c);
+  assert.equal(r.status, "uncertain");
+  assert.match(r.message, /conferir/i);
+  assert.equal(c.state.uncertain, true);
+  const again = await run("my_hub_register", gasto(45), c);
+  assert.match(again.error ?? "", /já foi/i);
+  assert.equal(api.calls.filter((x) => x[0] === "register").length, 1);
 });

@@ -38,7 +38,7 @@ interface ToolSets { calendar: boolean; myhub: boolean }
 function parseUndo(raw: unknown): { path: string | null; resumo: string; ts: number } | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const pathOk = o.path === null || (typeof o.path === "string" && o.path.length <= 300);
+  const pathOk = o.path === null || (typeof o.path === "string" && /^[\x21-\x7e]{1,300}$/.test(o.path));   // sem espaços nem controle
   if (!pathOk || typeof o.resumo !== "string" || o.resumo.length > 300 || typeof o.ts !== "number" || !Number.isFinite(o.ts)) return null;
   return { path: o.path as string | null, resumo: o.resumo, ts: o.ts };
 }
@@ -111,12 +111,19 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
   });
 
   let result = await loop();
+
+  // O modelo pediu [NEEDTOOLS] mesmo com ferramentas (ligamos só um conjunto e o pedido era de outro): liga todas, uma vez.
+  const all: ToolSets = { calendar: true, myhub: myHubWriteConfigured() };
+  if (detectNeedTools(result.text) === "yes" && (sets.calendar !== all.calendar || sets.myhub !== all.myhub)) {
+    return replyWithTools(req, apiKey, messages, memories, all, undoIn);
+  }
   const calls = [...result.calls];
   let steps = result.steps;
   let text = result.text;
 
   // Rede de proteção: disse que registrou/marcou/cancelou, o chefe pediu escrita e nada foi feito. Refaz uma vez.
-  if (!acted && (calWrite || hubWrite) && claimsWrite(text)) {
+  // (Não refaz se o My Hub não respondeu a tempo: ele pode ter gravado, e refazer duplicaria.)
+  if (!acted && !hubCtx.state.uncertain && (calWrite || hubWrite) && claimsWrite(text)) {
     result = await loop([{ role: "assistant", content: text }, { role: "user", content: CORRECTION }]);
     calls.push(...result.calls);
     steps += result.steps;
