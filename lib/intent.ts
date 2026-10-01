@@ -60,6 +60,7 @@ export function needsTools(messages: ChatMsg[]): boolean {
   if (TOOL_WORDS.test(text)) return true;
   if (wantsCalendar(messages)) return true;     // agenda: ferramentas, nunca o streaming de conversa
   if (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) return true;   // registrar no My Hub: ferramentas
+  if (wantsMemory(messages)) return true;                                    // lembrar, esquecer, listar memórias: ferramentas
   if (/\d/.test(text)) return true;           // número quase sempre é valor, hora ou quantidade: prompt completo
 
   // O Beto fez uma pergunta (em qualquer ponto do fim da fala) e a resposta curta é "sim", "pode", "quero"...:
@@ -229,4 +230,43 @@ export function claimsWrite(text: string): boolean {
     return true;
   }
   return false;
+}
+
+/* ── Memória ─────────────────────────────────────────────────────────────── */
+
+/* A memória é persistente e entra em todo prompt futuro: salvar e esquecer só com pedido EXPLÍCITO do chefe nesta
+   mensagem (um texto de terceiros nunca pode induzir isso). "me lembra de…" é lembrete, não memória. */
+const REMIND_ME = /\bme (lembra|lembre)\b/;
+const SAVE_STRONG = /\b(lembra|lembre|lembrar|guarda|guarde|guardar|memoriza|memorize|memorizar)\s+(que|isso|disso|ai)\b/;
+const SAVE_WEAK = /\b(anota|anote|anotar|salva|salve|salvar)\s+(que|isso|disso)\b/;
+const SAVE_OTHER = /\b(nao (esquece|esqueca) que|fica sabendo que|fique sabendo que|saiba que|so pra voce saber|so para voce saber|pode lembrar que|quero que voce lembre)\b/;
+
+export function wantsMemorySave(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  if (!last) return false;
+  const t = last.text;
+  if (REMIND_ME.test(t) || wantsMyHubWrite(messages)) return false;
+  if (SAVE_STRONG.test(t) || SAVE_OTHER.test(t)) return true;
+  return SAVE_WEAK.test(t) && !isCalendarTalk(t) && !(HAS_DAY_TIME.test(t) && HAS_CAL_NOUN.test(t));
+}
+
+const FORGET_VERB = "(?:esquece|esqueca|esquecer|apaga|apague|remove|remova|tira|tire)";
+const MEMORY_REF = "(?:da (?:sua )?memoria|sobre mim|que eu (?:gosto|moro|trabalho|acordo|sou|uso|prefiro|odeio|curto)|o que eu (?:te )?(?:falei|disse|contei))";
+const FORGET = new RegExp(`\\b${FORGET_VERB}\\b[^.!?]*\\b${MEMORY_REF}|\\b(?:para|pare) de lembrar\\b|\\bnao precisa mais lembrar\\b|\\bpode esquecer (?:que|isso|disso)\\b`);
+
+/** Esquecer algo que o Beto guardou: precisa de referência explícita a memória ("esquece, deixa pra lá" não conta). */
+export function wantsMemoryForget(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  return !!last && FORGET.test(last.text);
+}
+
+const MEMORY_LIST = /\bo que (voce|vc) (sabe|lembra|guardou|tem guardado) (sobre |de )?mim\b|\bquais (sao as |as )?(suas )?memorias\b|\bmostra (as |suas )?(suas )?memorias\b/;
+
+export function wantsMemoryList(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  return !!last && MEMORY_LIST.test(last.text);
+}
+
+export function wantsMemory(messages: ChatMsg[]): boolean {
+  return wantsMemorySave(messages) || wantsMemoryForget(messages) || wantsMemoryList(messages);
 }

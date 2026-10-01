@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite } from "../lib/intent.ts";
+import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite, wantsMemorySave, wantsMemoryForget, wantsMemoryList, wantsMemory } from "../lib/intent.ts";
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -392,4 +392,45 @@ test("negação é por ocorrência: 'não gastei 45, gastei 50' registra; 'não 
 test("'como sempre, gastei 80' é registro; resposta curta a pergunta de AGENDA não liga escrita no My Hub", () => {
   assert.equal(wantsMyHubWrite([u("como sempre, gastei 80 no mercado")]), true);
   assert.equal(wantsMyHubWrite([ask("Quer que eu anote a reunião na agenda?"), u("pode")]), false);
+});
+
+/* ── Memória ─────────────────────────────────────────────────────────────── */
+
+test("wantsMemorySave: pedidos explícitos para lembrar/guardar", () => {
+  for (const t of ["lembra que eu acordo cedo", "guarda que eu gosto de jazz", "memoriza isso: meu aniversário é em março", "não esquece que eu moro em São Paulo",
+    "fica sabendo que eu trabalho com dev", "só pra você saber, eu prefiro respostas curtas", "pode lembrar que eu uso Linux", "anota que eu sou alérgico a camarão"]) {
+    assert.equal(wantsMemorySave([u(t)]), true, t);
+  }
+});
+
+test("wantsMemorySave: lembrete para o chefe, dinheiro, agenda e conversa não são memória", () => {
+  for (const t of ["me lembra de ligar pro João sexta", "me lembra que tenho reunião amanhã", "anota que gastei 45 no mercado", "anota que amanhã tenho dentista às 15h",
+    "você lembra do filme que a gente falou", "como lembrar de beber água", "marca uma reunião amanhã", "gastei 30 hoje"]) {
+    assert.equal(wantsMemorySave([u(t)]), false, t);
+  }
+});
+
+test("wantsMemoryForget: só com referência explícita a memória; 'esquece, deixa pra lá' não apaga nada", () => {
+  for (const t of ["esquece que eu gosto de jazz", "esquece o que eu te falei sobre o meu trabalho", "apaga da sua memória que eu moro em SP", "remove isso da memória",
+    "para de lembrar que eu sou vegano", "não precisa mais lembrar que eu acordo cedo", "pode esquecer que eu uso Windows", "tira da memória o que eu disse sobre mim"]) {
+    assert.equal(wantsMemoryForget([u(t)]), true, t);
+  }
+  for (const t of ["esquece, deixa pra lá", "esquece isso", "apaga o histórico da conversa", "apaga o evento de amanhã", "tira o volume", "não esquece de registrar 50 de gasolina", "esqueci a senha"]) {
+    assert.equal(wantsMemoryForget([u(t)]), false, t);
+  }
+});
+
+test("wantsMemoryList: perguntar o que o Beto sabe/lembra sobre o chefe", () => {
+  for (const t of ["o que você sabe sobre mim?", "o que você lembra de mim", "quais memórias você tem", "mostra suas memórias", "o que você guardou sobre mim"]) {
+    assert.equal(wantsMemoryList([u(t)]), true, t);
+  }
+  for (const t of ["o que você sabe sobre typescript", "como estou hoje", "você lembra do filme?"]) assert.equal(wantsMemoryList([u(t)]), false, t);
+});
+
+test("wantsMemory junta as três e memória nunca vai pelo streaming de conversa", () => {
+  for (const t of ["lembra que eu acordo cedo", "esquece que eu gosto de jazz", "o que você sabe sobre mim"]) {
+    assert.equal(wantsMemory([u(t)]), true, t);
+    assert.equal(needsTools([u(t)]), true, t);
+  }
+  assert.equal(wantsMemory([u("como você está hoje de manhã")]), false);
 });
