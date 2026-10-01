@@ -374,3 +374,22 @@ test("claimsWrite: 'Sem problema, anotei' e 'Não consegui, mas registrei a idei
     assert.equal(claimsWrite(t), false, t);
   }
 });
+
+/* ── Terceira revisão (roteamento) ──────────────────────────────────────── */
+
+test("desfazer: 'não, desfaz isso' é desfazer; 'não precisa desfazer' não é", () => {
+  for (const t of ["não, desfaz isso", "não sei o que houve, desfaz", "não, desfaz esse último"]) assert.equal(wantsMyHubUndo([u(t)]), true, t);
+  for (const t of ["não precisa desfazer", "não quero desfazer", "nunca desfaz isso"]) assert.equal(wantsMyHubUndo([u(t)]), false, t);
+});
+
+test("negação é por ocorrência: 'não gastei 45, gastei 50' registra; 'não esquece de registrar' registra", () => {
+  for (const t of ["eu não gastei 45, gastei 50 no mercado", "não esquece de registrar 50 de gasolina", "não deixa de anotar o gasto de 50"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), true, t);
+  }
+  for (const t of ["eu não gastei 45 no mercado", "não registra esse gasto de 45"]) assert.equal(wantsMyHubWrite([u(t)]), false, t);
+});
+
+test("'como sempre, gastei 80' é registro; resposta curta a pergunta de AGENDA não liga escrita no My Hub", () => {
+  assert.equal(wantsMyHubWrite([u("como sempre, gastei 80 no mercado")]), true);
+  assert.equal(wantsMyHubWrite([ask("Quer que eu anote a reunião na agenda?"), u("pode")]), false);
+});

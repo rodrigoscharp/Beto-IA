@@ -63,3 +63,16 @@ A segunda revisão mostrou que adivinhar quais chaves "parecem dinheiro" num cat
 - **Registro alto liberado** só é consumido quando o My Hub realmente registra (recusa não gasta o "sim").
 - **Roteamento:** pergunta só vale como consulta quando a palavra interrogativa está no começo ("quanto gastei…"); "gastei 45 quando fui ontem" é registro. Negação antes do verbo ("não gastei", "não registra") não registra. Resposta curta só completa dado quando a última frase do Beto é pergunta de registro e a resposta não é negativa. `claimsWrite` só considera negação colada ao verbo ("não anotei"); "Sem problema, anotei" é afirmação.
 - **Rota:** o `[NEEDTOOLS]` com ferramentas só liga todos os conjuntos se **nenhuma** ferramenta executou (refazer depois de gravar duplicaria o registro).
+
+## Terceira rodada de correções
+
+- **Campo de valor que é array ou objeto** (`valorEmReais: [5000]`) é recusado; array de números altos em chave desconhecida é dinheiro. Objeto mais fundo que 6 níveis é recusado em vez de ficar sem varredura.
+- **Menos falso positivo:** campos de **texto** e **booleanos** com chave de aparência financeira (`formaDePagamento: "crédito"`, `tipoPagamento`, `pagamentoRecorrente`, `parcelado`, `totalParcelas`, `habitoId`) não quebram o registro. As chaves que SÃO o valor (`valor`, `valorEmReais`, `quantia`, `amount`, `value`, `total`, `preco`, `custo`, `cost`…) continuam estritas (texto nelas é recusado).
+- **Quantidade × preço** conta como o total (100 ações a R$ 35 pedem confirmação).
+- **Número alto numa chave desconhecida junto de um valor claro** é recusado (não dá para saber qual vale), em vez de inflar a pergunta; números negativos grandes também são medidos.
+- **Pergunta de confirmação:** a data vai como `dd/mm/aaaa`; uma pergunta negada ("Não registro…?") nunca confirma.
+- **Roteamento:** negação é por ocorrência ("não gastei 45, gastei 50" registra; "não esquece de registrar" é afirmação); "não, desfaz isso" desfaz, "não precisa desfazer" não; "como sempre, gastei 80" é registro; resposta curta a pergunta de agenda não liga escrita no My Hub.
+- **Rota:** o `[NEEDTOOLS]` religa todas as ferramentas se nenhuma **escrita** aconteceu (antes uma leitura já bloqueava, e pedidos mistos falhavam).
+
+### Risco que resta (decisão registrada)
+Depois de três revisões independentes, o risco que sobra é **estrutural**: o catálogo de ações do My Hub é texto livre, então o servidor não sabe exatamente qual campo de cada ação o My Hub lê como dinheiro. A defesa é varrer tudo e tratar como dinheiro o que parece dinheiro, mas um campo com nome incomum e valor alto escrito por extenso poderia passar. Mitigações já ativas: o My Hub valida e recusa o que não entende, o registro é desfazível por 15 minutos e o resumo do que foi gravado é falado ao chefe a cada registro. Recomendação para depois: o My Hub expor o catálogo de ações de forma estruturada (campos e tipos), para a trava deixar de ser heurística.

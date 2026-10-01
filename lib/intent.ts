@@ -159,16 +159,21 @@ const MONEY_VERB = /\b(gastei|paguei|comprei|recebi|ganhei|abasteci|almocei|jant
 const MONEY_CUE = /(^|\s|r\$)\d|\b(reais|real|conto|pila|mil|centavos)\b/;   // número solto (45, 1.500), não dígito dentro de palavra
 /* Pergunta de verdade: palavra interrogativa NO COMEÇO ("quanto gastei…", "como estão meus gastos…") ou um pedido de informação.
    "gastei 45 quando fui ontem" e "paguei a luz como combinado" são registros: a palavra no meio da frase não conta. */
-const QUESTION_START = /^(quanto|quantos|quantas|qual|quais|como|onde|quando|por que|porque)\b/;
+const QUESTION_START = /^(quanto|quantos|quantas|qual|quais|onde|quando|por que|porque|como(?! sempre| de costume| combinado))\b/;
 const QUESTION_ANY = /\b(quero saber|queria saber|saber se|sera que|me diz|me fala|me conta)\b/;
-/** O verbo aparece negado ("eu não gastei", "não registra", "nunca paguei")? Negação até 2 palavras antes dele. */
-function negated(t: string, verb: RegExp): boolean {
-  const m = verb.exec(t);
-  return !!m && /\b(nao|nunca|jamais)\s+(?:\w+\s+){0,2}$/.test(t.slice(0, m.index));
-}
-const ACTIVITY_VERB = /\b(bebi|treinei|estudei|meditei|corri|caminhei|malhei|pedalei|nadei)\b/;
+/** O verbo aparece AFIRMADO em alguma ocorrência? Negação ('não gastei', 'não registra', 'nunca paguei') até 2 palavras antes anula só aquela ocorrência; 'não esquece de registrar' é afirmação. */
+function affirmed(t: string, verb: RegExp): boolean {
+  const g = new RegExp(verb.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = g.exec(t))) {
+    const before = t.slice(0, m.index);
+    const neg = /\b(nao|nunca|jamais)\s+(?:\w+\s+){0,2}$/.test(before) && !/\b(nao|nunca)\s+(esquece|esqueca|deixa|deixe)\s+de\s+$/.test(before);
+    if (!neg) return true;   // basta UMA ocorrência não negada ("não gastei 45, gastei 50")
+  }
+  return false;
+}const ACTIVITY_VERB = /\b(bebi|treinei|estudei|meditei|corri|caminhei|malhei|pedalei|nadei)\b/;
 const MUSIC = /\b(toca|tocar|toque|musica|spotify|playlist|album)\b/;
-const REGISTER_VERB = /\b(anota|anote|registra|registre|lanca|lance|adiciona|adicione|coloca|bota|marca|marque|cria|crie)\b/;
+const REGISTER_VERB = /\b(anota|anote|anotar|registra|registre|registrar|lanca|lance|lancar|adiciona|adicione|adicionar|coloca|bota|marca|marque|cria|crie|criar)\b/;
 const REGISTER_NOUN = /\b(gasto|gastos|despesa|despesas|receita|receitas|transacao|tarefa|tarefas|habito|habitos|meta|metas|treino|estudo|projeto)\b/;
 
 /** O chefe pediu para REGISTRAR algo no My Hub (gasto, receita, hábito, tarefa). Consulta ("quanto gastei?") não conta. */
@@ -179,10 +184,10 @@ export function wantsMyHubWrite(messages: ChatMsg[]): boolean {
   // Pergunta é consulta ("quanto gastei em 2025?"), nunca registro. (O "?" sozinho não decide: a voz põe "?" em tudo.)
   const consulta = QUESTION_START.test(t.trim()) || QUESTION_ANY.test(t);
   if (!consulta && !MUSIC.test(t)) {
-    if (MONEY_VERB.test(t) && MONEY_CUE.test(t) && !negated(t, MONEY_VERB)) return true;
-    if (ACTIVITY_VERB.test(t) && !negated(t, ACTIVITY_VERB)) return true;
-    if (REGISTER_VERB.test(t) && REGISTER_NOUN.test(t) && !negated(t, REGISTER_VERB)) return true;
-    if (REGISTER_VERB.test(t) && MONEY_CUE.test(t) && !isCalendarTalk(t) && !negated(t, REGISTER_VERB)) return true;
+    if (MONEY_CUE.test(t) && affirmed(t, MONEY_VERB)) return true;
+    if (affirmed(t, ACTIVITY_VERB)) return true;
+    if (REGISTER_NOUN.test(t) && affirmed(t, REGISTER_VERB)) return true;
+    if (MONEY_CUE.test(t) && !isCalendarTalk(t) && affirmed(t, REGISTER_VERB)) return true;
   }
   const prev = messages[last.index - 1];
   if (prev && prev.role === "assistant") {
@@ -191,7 +196,8 @@ export function wantsMyHubWrite(messages: ChatMsg[]): boolean {
     const lastSentence = p.split(/(?<=[.!?])\s+/).filter(Boolean).pop() ?? "";
     if (words(t) <= 6 && lastSentence.endsWith("?")
         && /(qual conta|em qual conta|qual categoria|em qual categoria|qual (o )?valor|qual foi o valor|quanto foi|registr|anot|lanc)/.test(lastSentence)
-        && !/(memoria|lembrar)/.test(lastSentence) && !/^(nao|negativo|deixa|esquece|cancela|melhor nao)\b/.test(t)) return true;
+        && !/(memoria|lembrar)/.test(lastSentence) && !CALENDAR_QUESTION.test(lastSentence)
+        && !/^(nao|negativo|deixa|esquece|cancela|melhor nao)\b/.test(t)) return true;
     // O "sim" a uma pergunta de valor ("Registro uma despesa de R$ 1.500?") também libera o registro.
     if (userConfirmed(messages) && /(r\$|reais|valor|conto|pila)/.test(p)) return true;
   }
@@ -203,7 +209,7 @@ export function wantsMyHubUndo(messages: ChatMsg[]): boolean {
   const last = lastUserText(messages);
   if (!last) return false;
   const t = last.text;
-  if (/\bnao\b[^.!?]*\b(desfaz|desfaca|desfazer)\b/.test(t)) return false;
+  if (/\b(nao|nunca)\s+(precisa\s+|quero\s+|vou\s+)?(desfaz|desfaca|desfazer)\b/.test(t)) return false;   // 'não, desfaz isso' (vírgula) é desfazer
   if (/\b(desfaz|desfaca|desfazer|desfiz)\b/.test(t)) return true;
   if (/\bapaga (esse|o ultimo) (registro|gasto|lancamento)\b/.test(t)) return true;
   const prev = messages[last.index - 1];

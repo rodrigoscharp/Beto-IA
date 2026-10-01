@@ -363,3 +363,65 @@ test("o 'registro alto liberado' só conta se o My Hub realmente registrou (recu
   assert.equal((await reg({ tipo: "despesa", valorEmReais: 1500, descricao: "Mercado da semana", categoria: "Mercado" }, c)).status, "failed");
   assert.notEqual(c.state.highDone, true);
 });
+
+/* ── Terceira revisão do My Hub ─────────────────────────────────────────── */
+
+test("campo de valor que é array ou objeto é RECUSADO; array de números altos em chave desconhecida é dinheiro", async () => {
+  for (const entrada of [
+    { tipo: "despesa", valorEmReais: [5000], descricao: "x" },
+    { tipo: "despesa", valorEmReais: ["5000"], descricao: "x" },
+    { tipo: "despesa", valor: { reais: 5000 }, descricao: "x" },
+  ]) {
+    const api = fakeApi();
+    assert.match((await reg(entrada, ctx(api))).error ?? "", /valor/i, JSON.stringify(entrada));
+    assert.equal(api.calls.length, 0);
+  }
+  const api = fakeApi();
+  assert.match((await reg({ tipo: "despesa", valores: [5000], descricao: "x" }, ctx(api))).error ?? "", /valor/i, "chave de valor com array é recusada");
+  assert.equal((await reg({ tipo: "despesa", misterio: [5000], descricao: "x" }, ctx(api))).status, "needs_confirmation", "array de números altos em chave desconhecida");
+});
+
+test("campos de TEXTO e booleanos cujas chaves parecem dinheiro NÃO quebram registros normais", async () => {
+  for (const extra of [{ formaDePagamento: "crédito" }, { tipoPagamento: "pix" }, { pagamentoRecorrente: true }, { parcelado: false },
+    { totalParcelas: 12 }, { descricaoPagamento: "Pix" }, { habitoId: 1234 }, { projetoId: 99999 }]) {
+    const api = fakeApi();
+    const r = await reg({ tipo: "despesa", valorEmReais: 100, descricao: "x", ...extra }, ctx(api));
+    assert.equal(r.status, "registered", JSON.stringify(extra));
+  }
+});
+
+test("quantidade × preço vale como o total (100 ações a R$ 35 pedem confirmação)", async () => {
+  const api = fakeApi();
+  const r = await reg({ ativo: "PETR4", quantidade: 100, precoUnitario: 35 }, ctx(api), "registrarInvestimento");
+  assert.equal(r.status, "needs_confirmation");
+  assert.match(r.ask_with, /3\.500,00/);
+  assert.equal((await reg({ ativo: "PETR4", quantidade: 10, precoUnitario: 35 }, ctx(fakeApi()), "registrarInvestimento")).status, "registered");
+});
+
+test("número alto em chave de texto conhecida (descricao: '2026') não vira dinheiro; número desconhecido junto de valor estrito é CONFLITO", async () => {
+  const api = fakeApi();
+  assert.equal((await reg({ tipo: "despesa", valorEmReais: 45, descricao: "2026", categoria: "Mercado" }, ctx(api))).status, "registered");
+  const r = await reg({ tipo: "despesa", valorEmReais: 45, v: "5000", descricao: "x" }, ctx(fakeApi()));
+  assert.match(r.error ?? "", /desconhecido|conflit/i);
+});
+
+test("negativos e chaves em inglês também são dinheiro; objeto fundo demais é recusado", async () => {
+  assert.match((await reg({ tipo: "despesa", value: -5000, descricao: "x" }, ctx(fakeApi()))).error ?? "", /valor/i);
+  assert.equal((await reg({ tipo: "despesa", cost: "5000", descricao: "x" }, ctx(fakeApi()))).status, "needs_confirmation");
+  let deep = { valorEmReais: 5000 };
+  for (let i = 0; i < 8; i++) deep = { n: deep };
+  assert.match((await reg({ tipo: "despesa", descricao: "x", ...deep }, ctx(fakeApi()))).error ?? "", /aninhad/i);
+});
+
+test("a data vai na pergunta como dd/mm/aaaa (o modelo erra menos do que com ISO)", async () => {
+  const r = await reg({ tipo: "despesa", valorEmReais: 1500, descricao: "Mercado", categoria: "Mercado", data: "2026-10-05" }, ctx(fakeApi()));
+  assert.match(r.ask_with, /05\/10\/2026/);
+  const ok = await reg({ tipo: "despesa", valorEmReais: 1500, descricao: "Mercado", categoria: "Mercado", data: "2026-10-05" }, ctx(fakeApi(), { confirmed: true, lastAssistant: r.ask_with }));
+  assert.equal(ok.status, "registered");
+});
+
+test("pergunta negada ('Não registro uma despesa de R$ 1.500,00?') + 'sim' NÃO grava", async () => {
+  const entrada = { tipo: "despesa", valorEmReais: 1500, descricao: "Mercado da semana", categoria: "Mercado" };
+  const r = await reg(entrada, ctx(fakeApi(), { confirmed: true, lastAssistant: "Não registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?" }));
+  assert.equal(r.status, "needs_confirmation");
+});

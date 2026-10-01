@@ -114,8 +114,8 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
 
   // O modelo pediu [NEEDTOOLS] mesmo com ferramentas (ligamos só um conjunto e o pedido era de outro): liga todas, uma vez.
   const all: ToolSets = { calendar: true, myhub: myHubWriteConfigured() };
-  // Só se NENHUMA ferramenta executou: refazer do zero depois de uma escrita duplicaria o registro e perderia o desfazer.
-  if (detectNeedTools(result.text) === "yes" && result.calls.length === 0 && (sets.calendar !== all.calendar || sets.myhub !== all.myhub)) {
+  // Só se NENHUMA escrita aconteceu (leituras e recusas não têm efeito): refazer depois de gravar duplicaria o registro.
+  if (detectNeedTools(result.text) === "yes" && !acted && !hubCtx.state.uncertain && hubCtx.state.writes === 0 && (sets.calendar !== all.calendar || sets.myhub !== all.myhub)) {
     return replyWithTools(req, apiKey, messages, memories, all, undoIn);
   }
   const calls = [...result.calls];

@@ -103,37 +103,70 @@ function lastQuestion(text: string): string {
   return last.endsWith("?") ? last : "";
 }
 
-/* Chaves cujo valor é dinheiro. Casa por trecho (valorTotal, valorParcela, precoUnitario, custo…), em qualquer caixa. */
-const MONEY_KEY = /(valor|preco|price|amount|quantia|total|custo|gasto|montante|parcela|aporte|saldo|pagamento|renda|centavos)/i;
+/* Chaves cujo valor é dinheiro. Casa por trecho (valorTotal, valorParcela, precoUnitario, custo, cost, value…), em qualquer caixa. */
+const MONEY_KEY = /(valor|value|preco|price|amount|quantia|total|custo|cost|gasto|montante|parcela|aporte|saldo|pagamento|renda|importe|centavos)/i;
+/* Chaves de TEXTO ou identificador: nunca são dinheiro (formaDePagamento: "crédito", descricao: "2026", habitoId: 1234). */
+const TEXT_KEY = /^(tipo|forma|metodo|meio|descricao|titulo|nome|categoria|conta|projeto|habito|observacao|obs|nota|data|prazo|status|moeda|currency|id)|[a-z]Id$/;
 /* Números que NÃO são dinheiro (podem passar de 1.000 sem confirmação). Qualquer outro número alto é tratado como dinheiro. */
-const SAFE_NUMERIC = /^(quantidade|quantity|qtd|minutos|duracao|segundos|horas|dias|repeticoes|series|peso|km|metros|calorias|ml|litros|ordem|prioridade|nota|pontos|ano|id|parcelas|numparcelas|numeroparcelas|nparcelas)$/i;
+const SAFE_NUMERIC = /^(quantidade|quantity|qtd|qtde|minutos|segundos|horas|dias|repeticoes|series|peso|km|metros|calorias|ml|litros|ordem|prioridade|nota|pontos|ano|id)$|(parcelas|quantidade|qtd|qtde|minutos|segundos|horas|dias)$|^(num|numero)/i;
+const QTY_KEY = /^(quantidade|qtd|qtde|quantity)$/i;
+/* Chaves que SÃO o valor: sempre lidas de forma estrita (texto nelas é recusado). As compostas (formaDePagamento…) podem ser texto. */
+const PRIMARY_MONEY = /^(valor|valoremreais|valoremcentavos|quantia|amount|value|total|preco|price|custo|cost)$/i;
+const MAX_DEPTH = 6;
 
-interface Money { parent: Args; key: string; reais: number; strictKey: boolean }
+interface Money { reais: number; kind: "strict" | "unknown" | "product" }
 
 /** Varre a entrada (qualquer profundidade, arrays inclusos), normaliza cada campo de valor NA MESMA CHAVE (número) e
-    devolve o que achou. `invalid`: um campo de valor que não é um número claro e positivo. */
+    devolve o que achou. Retorna o nome da chave problemática quando um campo de valor não é um número claro e positivo
+    (inclusive array ou objeto no lugar do número) ou quando a entrada é funda demais para ser examinada. */
 function scanMoney(node: unknown, found: Money[], depth = 0): string | null {
-  if (depth > 5) return null;
+  if (depth > MAX_DEPTH) return "(entrada aninhada demais)";
   if (Array.isArray(node)) {
     for (const item of node.slice(0, 50)) { const bad = scanMoney(item, found, depth + 1); if (bad) return bad; }
     return null;
   }
   if (!isObj(node)) return null;
+  const strictHere: number[] = [];
+  let qty = 1;
   for (const [key, v] of Object.entries(node)) {
-    if (v && typeof v === "object") { const bad = scanMoney(v, found, depth + 1); if (bad) return bad; continue; }
-    if (v === undefined || v === null) continue;
+    if (v === undefined || v === null || typeof v === "boolean") continue;
+    if (QTY_KEY.test(key)) { const q = typeof v === "number" ? v : Number(v); if (Number.isFinite(q) && q > 1) qty = q; }
+    if (TEXT_KEY.test(key)) continue;
+    const moneyKey = MONEY_KEY.test(key) && !SAFE_NUMERIC.test(key);
+    if (v && typeof v === "object") {
+      if (moneyKey) return key;                        // valor como array/objeto: não dá para ler com segurança
+      if (Array.isArray(v)) {
+        // Array de números altos em chave desconhecida: cada número alto é dinheiro; objetos dentro dele são varridos.
+        for (const item of v.slice(0, 50)) {
+          if (item && typeof item === "object") { const bad = scanMoney(item, found, depth + 1); if (bad) return bad; }
+          else {
+            const n = typeof item === "number" ? Math.abs(item) : typeof item === "string" ? amountOf(item) : undefined;
+            if (n !== undefined && Number.isFinite(n) && n > HIGH_VALUE) found.push({ reais: n, kind: "unknown" });
+          }
+        }
+        continue;
+      }
+      const bad = scanMoney(v, found, depth + 1);
+      if (bad) return bad;
+      continue;
+    }
     if (SAFE_NUMERIC.test(key)) continue;
-    if (MONEY_KEY.test(key)) {
+    if (moneyKey) {
+      if (typeof v === "string" && !PRIMARY_MONEY.test(key) && !/\d|\bmil\b|\bk\b/i.test(v)) continue;   // texto numa chave composta ("pix", "crédito"), não valor
       const n = amountOf(v);
       if (n === undefined) return key;
-      const reais = /centavos/i.test(key) ? n / 100 : n;
-      node[key] = /centavos/i.test(key) ? Math.round(n) : Math.round(n * 100) / 100;   // número, 2 casas (centavos inteiros)
-      found.push({ parent: node, key, reais: Math.round(reais * 100) / 100, strictKey: true });
+      const centavos = /centavos/i.test(key);
+      node[key] = centavos ? Math.round(n) : Math.round(n * 100) / 100;      // número, 2 casas (centavos inteiros)
+      const reais = Math.round((centavos ? n / 100 : n) * 100) / 100;
+      found.push({ reais, kind: "strict" });
+      strictHere.push(reais);
     } else {
-      const n = typeof v === "number" ? v : typeof v === "string" ? amountOf(v) : undefined;
-      if (n !== undefined && Number.isFinite(n) && n > HIGH_VALUE) found.push({ parent: node, key, reais: n, strictKey: false });
+      const n = typeof v === "number" ? Math.abs(v) : typeof v === "string" ? amountOf(v) : undefined;
+      if (n !== undefined && Number.isFinite(n) && n > HIGH_VALUE) found.push({ reais: n, kind: "unknown" });
     }
   }
+  // quantidade × preço: o total é o que conta ("100 ações a R$ 35")
+  if (qty > 1) for (const r of strictHere) found.push({ reais: Math.round(r * qty * 100) / 100, kind: "product" });
   return null;
 }
 
@@ -170,8 +203,12 @@ export async function executeMyHubTool(name: string, args: unknown, ctx: MyHubCt
   const found: Money[] = [];
   const bad = scanMoney(entrada, found);
   if (bad) return fail(`valor inválido em "${bad}": mande o valor como número em reais (ex.: 45.5), sem texto como "mil" ou "1k".`);
-  const distinct = new Set(found.filter((f) => f.strictKey).map((f) => f.reais));
-  if (distinct.size > 1) return fail("Campos de valor conflitantes na entrada (números diferentes): mande um só valor.");
+  const strict = found.filter((f) => f.kind === "strict").map((f) => f.reais);
+  if (new Set(strict).size > 1) return fail("Campos de valor conflitantes na entrada (números diferentes): mande um só valor.");
+  // Número alto numa chave desconhecida junto de um valor claro: não dá para saber qual vale. Recusa em vez de adivinhar.
+  if (strict.length && found.some((f) => f.kind === "unknown" && f.reais > Math.max(...strict))) {
+    return fail("Há um campo numérico desconhecido com valor alto junto do valor da transação; remova esse campo ou ponha o valor certo em valorEmReais.");
+  }
   const reais = found.length ? Math.max(...found.map((f) => f.reais)) : undefined;
   if (reais !== undefined && reais > MAX_VALUE) return fail("valor alto demais para registrar por voz; faça direto no My Hub.");
 
@@ -195,11 +232,12 @@ export async function executeMyHubTool(name: string, args: unknown, ctx: MyHubCt
       + (str("descricao") ? ` (${str("descricao")})` : "")
       + (str("categoria") ? ` em ${str("categoria")}` : "")
       + (str("conta") ? `, na conta ${str("conta")}` : "")
-      + (str("data") ? `, em ${str("data")}` : "");
+      + (str("data") ? `, em ${str("data").replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3/$2/$1")}` : "");
     const question = lastQuestion(ctx.lastAssistant);
     // O "sim" só vale se a última frase do Beto TERMINA exatamente neste registro (palavra inteira, sem acento/pontuação).
     // (A frase PODE ter palavras antes, "Chefe, registro…", mas TERMINA no registro: detalhe a mais depois dele é outro registro.)
-    const ok = ctx.confirmed && question !== "" && ` ${plain(question)}`.endsWith(` ${plain(core)}`);
+    const q = ` ${plain(question)}`, c = ` ${plain(core)}`;
+    const ok = ctx.confirmed && question !== "" && q.endsWith(c) && !/\b(nao|nunca)\b/.test(q.slice(0, q.length - c.length));   // "Não registro…?" não confirma
     if (!ok) {
       return {
         status: "needs_confirmation",
