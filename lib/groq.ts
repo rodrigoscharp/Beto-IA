@@ -1,5 +1,6 @@
 import Groq from "groq-sdk";
 import { ThinkFilter } from "./thinkfilter";
+import { HeadGate } from "./headgate";
 
 /* Groq retira modelos e cada conta enxerga um conjunto diferente.
    Tenta os preferidos em ordem (o primeiro que funcionar fica em cache) e
@@ -113,8 +114,20 @@ export async function groqChat(apiKey: string, params: ChatParams): Promise<stri
 
 
 /* Streaming: devolve a resposta em pedaços de texto, com a mesma lista e a mesma troca de modelo. Só troca de
-   modelo ENQUANTO nenhum texto saiu (depois do primeiro pedaço o ouvinte já começou a receber). Erro depois
-   disso é repassado a quem consome. */
+   modelo ENQUANTO nenhum texto de verdade saiu (tag de emoção sozinha não conta, ver HeadGate); depois do primeiro
+   pedaço o ouvinte já começou a receber e erro é repassado a quem consome.
+   O timeout do SDK só vale até os cabeçalhos chegarem: um modelo que engasga antes do primeiro token ficaria
+   parado para sempre, então cada espera por pedaço tem prazo próprio. */
+const FIRST_TOKEN_MS = 8_000;
+const CHUNK_MS = 15_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`timeout: ${what}`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export async function* groqChatStream(apiKey: string, params: ChatParams): AsyncGenerator<string, void, void> {
   const groq = newClient(apiKey);
   const order = [working, ...PREFERRED].filter(Boolean) as string[];
@@ -125,29 +138,39 @@ export async function* groqChatStream(apiKey: string, params: ChatParams): Async
     if (seen.has(model) || (cooldown.get(model) ?? 0) > Date.now() || isDead(model)) continue;
     seen.add(model);
     let started = false;
+    let stream: (AsyncIterable<unknown> & { controller?: AbortController }) | null = null;
     try {
-      type Delta = AsyncIterable<{ choices?: { delta?: { content?: string | null } }[] }>;
-      const stream = (await groq.chat.completions.create({ ...params, ...fastFor(model), model, stream: true } as never)) as unknown as Delta;
+      type Delta = AsyncIterable<{ choices?: { delta?: { content?: string | null } }[] }> & { controller?: AbortController };
+      const created = (await groq.chat.completions.create({ ...params, ...fastFor(model), model, stream: true } as never)) as unknown as Delta;
+      stream = created;
+      const iter = created[Symbol.asyncIterator]();
       const filter = new ThinkFilter();
+      const gate = new HeadGate();
       let leading = true;   // o texto final começa sem espaço/linha em branco (como o .trim() do caminho sem stream)
       const emit = (piece: string) => {
         if (leading) { piece = piece.trimStart(); if (!piece) return ""; leading = false; }
         return piece;
       };
-      for await (const chunk of stream) {
-        const raw = chunk.choices?.[0]?.delta?.content;
+      const out = (piece: string) => {
+        const text = gate.push(piece);
+        if (text && !started) { started = true; working = model; }
+        return text;
+      };
+      for (;;) {
+        const r = await withTimeout(iter.next(), started ? CHUNK_MS : FIRST_TOKEN_MS, `modelo ${model}`);
+        if (r.done) break;
+        const raw = r.value.choices?.[0]?.delta?.content;
         if (!raw) continue;
-        const piece = emit(filter.push(raw));
-        if (!piece) continue;
-        if (!started) { started = true; working = model; }
-        yield piece;
+        const text = out(emit(filter.push(raw)));
+        if (text) yield text;
       }
-      const tail = emit(filter.flush());
-      if (tail) { if (!started) { started = true; working = model; } yield tail; }
+      const tail = out(emit(filter.flush()));
+      if (tail) yield tail;
       if (started) return;
       lastError = new Error(`O modelo ${model} não devolveu texto.`);
       cooldown.set(model, Date.now() + 20_000);
     } catch (e) {
+      try { stream?.controller?.abort(); } catch { /* já encerrado */ }
       if (started) throw e;
       lastError = e;
       if (noteFailure(model, e)) throw e;

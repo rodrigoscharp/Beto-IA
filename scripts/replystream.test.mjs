@@ -125,3 +125,25 @@ test("frase muito longa sem pontuação é cortada em algum ponto, sem perder te
   assert.ok(s.length >= 2, "deve cortar");
   assert.equal(s.join(" "), words);
 });
+
+test("[NEEDTOOLS] depois do texto também é hold tardio e nunca vira frase falada", () => {
+  const r = run("[emo:neutro] Claro, chefe, deixa comigo. [NEEDTOOLS]");
+  const hold = r.events.find((e) => e.type === "hold");
+  assert.ok(hold && hold.late === true);
+  assert.deepEqual(sentences(r), ["Claro, chefe, deixa comigo."]);
+  assert.equal(r.held, true);
+});
+
+test("[NEEDTOOLS] com sublinhado ou minúsculo logo no começo segura tudo", () => {
+  for (const t of ["[emo:neutro] [NEED_TOOLS]", "[needtools]", "[emo:alegre][NeedTools] ok"]) {
+    const r = run(t);
+    assert.equal(r.held, true, t);
+    assert.deepEqual(sentences(r), [], t);
+  }
+});
+
+test("[NEEDTOOLS] cortado em pedaços de 1 caractere", () => {
+  const r = run("[emo:neutro] Beleza, pode deixar comigo. [NEEDTOOLS]", 1);
+  assert.equal(r.held, true);
+  assert.ok(sentences(r).every((s) => !s.includes("NEED")));
+});

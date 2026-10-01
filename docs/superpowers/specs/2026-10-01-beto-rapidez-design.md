@@ -60,3 +60,16 @@ Reduzir o tempo até o Beto começar a falar, gastar menos da cota da voz e deix
 
 - Sem documento de plano separado: o usuário delegou a execução; as tarefas estão na ordem acima e cada uma é implementada com teste primeiro quando é função pura.
 - Item 6 reduzido à entrada por texto (motivo acima).
+
+## Correções depois da revisão independente
+
+- **Roteador mais conservador:** número, valores ("35 reais", "5 km"), verbos de registro no passado ("almocei", "corri"), comandos de música ("coloca", "bota", "abaixa") e leitura de email ("lê o da Maria") vão pelo prompt completo. O streaming também só roda se a fala não casar com a regra de registro do app.
+- **Rede de proteção do "anotei":** se, no modo conversa, o modelo disse que registrou ou marcou algo, o Beto termina a frase e refaz **com o prompt completo** (`full: true` na requisição), que tem as ferramentas.
+- **`[NEEDTOOLS]`:** reconhecido depois da tag de emoção, em qualquer caixa e com sublinhado (`[NEED_TOOLS]`), cortado entre pedaços e no meio do texto; removido da fala por `sanitize` como última defesa.
+- **Tag de ação tardia:** a fala em andamento termina e a ação roda sem repetir o texto.
+- **Erro depois da tag de emoção:** `HeadGate` segura tags sozinhas; sem texto de verdade o modelo ainda não "começou" e a troca de modelo continua valendo. Resposta vazia refaz sem stream.
+- **Modelo travado:** prazo de 8 s para o primeiro texto e 15 s entre pedaços; passa ao próximo modelo. No cliente, 20 s sem pedaços desiste do stream.
+- **Turno velho:** número de turno e `AbortController` impedem que um stream antigo escreva no histórico ou fale por cima do turno novo; o servidor para de gerar quando o cliente desconecta.
+- **Fila de voz:** ao cancelar libera os áudios buscados; a boca para entre as frases.
+- **Resposta curta a uma pergunta do Beto:** só vai pelo prompt completo se começar com sim/pode/quero/etc., para não perder o streaming em conversa comum.
+- **Adiado:** bloco de código atravessando frases (o prompt já proíbe código); concorrência de pedidos de voz somada ao pré-carregamento de saudações no primeiro uso.

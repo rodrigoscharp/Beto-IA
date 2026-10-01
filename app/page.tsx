@@ -130,6 +130,7 @@ function parseTag<T>(reply: string, re: RegExp): { action: T | null; text: strin
 function sanitize(text: string): string {
   return text
     .replace(EMOTION_TAG, "")     // última defesa: a tag nunca é falada nem vai para a legenda
+    .replace(/\[\s*NEED_?TOOLS\s*\]/gi, "")   // idem para o marcador interno de ferramentas
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`\n]+`/g, "")
     .replace(/^\s*#{1,6}\s+/gm, "")
@@ -189,6 +190,8 @@ export default function JarvisPage() {
   const turnT0         = useRef<number | null>(null);                             // início do turno, para medir o tempo até o 1º áudio
   const turnVia        = useRef<"stream" | "full" | "greeting">("full");
   const quotaAt        = useRef(0);
+  const turnSeq        = useRef(0);                                               // número do turno: respostas de um turno antigo não mexem no atual
+  const streamAbort    = useRef<AbortController | null>(null);                    // para de ler (e de gastar) o stream do turno cancelado
   const timerInterval  = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerSecsLeft  = useRef(0);
   const timerLabel     = useRef("");
@@ -391,10 +394,26 @@ export default function JarvisPage() {
   }
 
   /** Para qualquer voz em andamento: a fila por frase e o áudio atual. */
-  function killAudio() {
+  function stopPlayback() {
     queueRef.current?.cancel();
     queueRef.current = null;
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+  }
+  /** Quem chama quer silêncio e abandona também a resposta que ainda estava chegando. */
+  function killAudio() {
+    streamAbort.current?.abort();
+    streamAbort.current = null;
+    stopPlayback();
+  }
+
+  /** Fim da fala de um turno: volta a ouvir (conversa) ou ao wake word. */
+  function endTurn(followUp: boolean) {
+    if (followUp && !musicPlaying.current && !typedTurn.current && getSR()) {
+      setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
+    } else {
+      setMode("wake"); setTimeout(startWake, 300);
+    }
+    refreshQuota();
   }
 
   /** Primeiro áudio (ou primeira legenda) de uma resposta: manda o tempo desde o fim da fala do usuário. */
@@ -982,6 +1001,7 @@ export default function JarvisPage() {
   ══════════════════════════════════════════════════════════════════════ */
 
   async function sendToJarvis(text: string, opts: { typed?: boolean } = {}) {
+    const turn = ++turnSeq.current;
     typedTurn.current = !!opts.typed;
     turnT0.current    = performance.now();
     turnVia.current   = "full";
@@ -1010,10 +1030,14 @@ export default function JarvisPage() {
       // Conversa simples: a voz começa na primeira frase, sem esperar a resposta inteira. Pedido de ação, registro ou
       // qualquer dúvida segue o caminho completo abaixo (que sabe executar as tags).
       let held: string | null = null;
-      if (!needsTools(msgs.slice(-20))) {
-        const r = await streamReply(msgs);
-        if (r.done) return;
+      let alreadySpoken = false;
+      let forceFull = false;
+      if (!needsTools(msgs.slice(-20)) && !REGISTER_INTENT.test(text)) {
+        const r = await streamReply(msgs, turn);
+        if (r.done || turn !== turnSeq.current) return;
         held = r.full;
+        alreadySpoken = r.spoken === true;
+        forceFull = r.forceFull === true;
       }
 
       let rawReply: string;
@@ -1023,13 +1047,14 @@ export default function JarvisPage() {
         const res  = await fetch("/api/chat", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ messages: msgs.slice(-20) }),
+          body:    JSON.stringify({ messages: msgs.slice(-20), full: forceFull || undefined }),
         });
         if (res.status === 401) { window.location.href = "/login"; return; } // sessão expirou: volta ao login em vez de falhar calado
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         rawReply = data.reply as string;
       }
+      if (turn !== turnSeq.current) return;   // outro turno começou enquanto esperava
 
       // Disse que registrou mas não mandou a tag: nada foi gravado. Pede ao modelo para corrigir uma vez.
       if (CLAIMS_WRITE.test(rawReply) && !HAS_TAG.test(rawReply) && REGISTER_INTENT.test(text)) {
@@ -1055,14 +1080,7 @@ export default function JarvisPage() {
       // Respostas de conversa/consulta continuam ouvindo; comando de música, timer e memória voltam ao wake word
       // (com música tocando o microfone aberto captaria a letra como se fosse você).
       const say  = async (t: string, followUp = false, emotion: Emotion = emo.emotion) => {
-        speak(sanitize(t), () => {
-          if (followUp && !musicPlaying.current && !typedTurn.current && getSR()) {
-            setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
-          } else {
-            setMode("wake"); setTimeout(startWake, 300);
-          }
-          refreshQuota();
-        }, emotion);
+        speak(sanitize(t), () => endTurn(followUp), emotion);
       };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
@@ -1095,6 +1113,7 @@ export default function JarvisPage() {
           say(fail.text, true, fail.emotion);
         }
       }
+      else if (alreadySpoken)   endTurn(true);   // o texto já foi falado em streaming; nenhuma ação a executar
       else                      say(rawReply, true);
 
     } catch {
@@ -1105,15 +1124,18 @@ export default function JarvisPage() {
   /** Lê a resposta em streaming e fala frase por frase. `done`: o turno inteiro foi tratado aqui.
       Se não foi (erro antes do texto, resposta só com tag, ou tag de ação), devolve `full` com o texto cru
       (ou null para refazer a chamada) e o caminho completo assume. */
-  async function streamReply(msgs: Msg[]): Promise<{ done: boolean; full: string | null }> {
+  async function streamReply(msgs: Msg[], turn: number): Promise<{ done: boolean; full: string | null; spoken?: boolean; forceFull?: boolean }> {
+    const ac = new AbortController();
+    streamAbort.current = ac;
     let res: Response;
     try {
       res = await fetch("/api/chat", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ messages: msgs.slice(-20), stream: true }),
+        signal:  ac.signal,
       });
-    } catch { return { done: false, full: null }; }
+    } catch { return { done: ac.signal.aborted, full: null }; }
     if (res.status === 401) { window.location.href = "/login"; return { done: true, full: null }; }
     if (!res.ok || !res.body) return { done: false, full: null };
 
@@ -1126,7 +1148,7 @@ export default function JarvisPage() {
 
     const ensureQueue = (): SpeechQueue => {
       if (queue) return queue;
-      killAudio();
+      stopPlayback();   // sem abortar: o stream que estamos lendo é o desta própria fala
       turnVia.current = "stream";
       setMode("speaking");
       setEmotion(emotionNow);
@@ -1151,9 +1173,10 @@ export default function JarvisPage() {
           audio.onended = () => finish();
           audio.onerror = () => finish();
           audio.play().catch(() => finish());
+          void done.then(() => setTalking(false));   // a boca para entre uma frase e outra
           return { done, stop: () => { audio.pause(); audio.src = ""; finish(); } };
         },
-        showText:  (t) => { setCaption(t); },
+        showText:  (t) => { setTalking(false); setCaption(t); },
         readingMs: (t) => Math.min(8000, 1500 + t.length * 55),
         sleep:     (ms) => new Promise<void>((r) => setTimeout(r, ms)),
         onFirstSound: firstSound,
@@ -1178,35 +1201,55 @@ export default function JarvisPage() {
       }
     };
 
+    let stalled = false;
     try {
       for (;;) {
-        const { done, value } = await reader.read();
+        // Stream parado por 20 s: desiste e fala o que já chegou (ou refaz sem stream), em vez de deixar o Beto preso.
+        const stall = setTimeout(() => { stalled = true; ac.abort(); }, 20_000);
+        const { done, value } = await reader.read().finally(() => clearTimeout(stall));
         if (done) break;
         handle(rs.push(decoder.decode(value, { stream: true })));
       }
       handle(rs.push(decoder.decode()));
-    } catch { /* corte no meio: fala o que já chegou */ }
+    } catch { /* corte no meio (ou desistência): fala o que já chegou */ }
     const end = rs.finish();
     handle(end.events);
+    if (turn !== turnSeq.current || (ac.signal.aborted && !stalled)) return { done: true, full: null };   // cancelado pelo usuário ou turno velho
 
-    // Sem nada para falar (erro antes do texto, ou só a tag) ou com tag de ação: o caminho completo cuida.
-    if (!queue || held) {
-      if (queue) { /* tag tardia: a fala já começada termina; o caminho completo só executa a ação */ }
-      return { done: false, full: end.full || null };
+    const wantsTools = /NEED_?TOOLS/i.test(end.full);   // marcador interno: nunca vai para o caminho de fala
+
+    // Sem nada para falar: erro antes do texto, ou só a tag. Refaz sem stream em vez de ficar mudo.
+    if (!queue && !held) {
+      return { done: false, full: parseEmotion(end.full).text.trim() ? end.full : null };
+    }
+    // Tag de ação (ou pedido de ferramentas) sem fala começada: o caminho completo cuida.
+    if (!queue) return { done: false, full: wantsTools ? null : end.full, forceFull: wantsTools };
+    // Tag tardia: deixa terminar o que já está sendo falado; o caminho completo só executa a ação (sem repetir o texto).
+    if (held) {
+      const hq: SpeechQueue = queue;
+      await hq.end();
+      if (turn !== turnSeq.current || queueRef.current !== hq || hq.isCancelled()) return { done: true, full: null };
+      queueRef.current = null;
+      return { done: false, full: wantsTools ? null : end.full, spoken: !wantsTools, forceFull: wantsTools };
     }
 
     const q: SpeechQueue = queue;
     const spoken = parseEmotion(end.full);
+    // O modelo sem ferramentas disse que registrou/marcou algo: nada foi feito. Termina de falar e refaz com o prompt completo.
+    if (CLAIMS_WRITE.test(spoken.text)) {
+      await q.end();
+      if (turn !== turnSeq.current || queueRef.current !== q || q.isCancelled()) return { done: true, full: null };
+      queueRef.current = null;
+      return { done: false, full: null, forceFull: true };   // refaz com o prompt completo (que tem as ferramentas)
+    }
     // O histórico guarda a tag: ver o formato nas respostas anteriores ajuda o modelo a não esquecer dela.
     history.current = [...msgs, { role: "assistant", content: `[emo:${emotionNow}] ${spoken.text}` }];
     await q.end();
-    if (queueRef.current !== q || q.isCancelled()) return { done: true, full: null };   // interrompido pelo usuário
+    if (turn !== turnSeq.current || queueRef.current !== q || q.isCancelled()) return { done: true, full: null };   // interrompido
     queueRef.current = null;
     setCaption("");
     setTalking(false);
-    if (!musicPlaying.current && !typedTurn.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
-    else { setMode("wake"); setTimeout(startWake, 300); }
-    refreshQuota();
+    endTurn(true);
     return { done: true, full: null };
   }
 

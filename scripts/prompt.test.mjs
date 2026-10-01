@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSystemPrompt, NEED_TOOLS_TAG } from "../lib/prompt.ts";
+import { buildSystemPrompt, NEED_TOOLS_TAG, detectNeedTools } from "../lib/prompt.ts";
 
 const input = {
   memories: [{ content: "acorda cedo", category: "habit" }],
@@ -47,4 +47,34 @@ test("sem memórias não sobra bloco vazio", () => {
 
 test("o marcador de ferramentas é o texto exato que o servidor procura", () => {
   assert.equal(NEED_TOOLS_TAG, "[NEEDTOOLS]");
+});
+
+test("detectNeedTools: reconhece o marcador sozinho, depois da emoção, em qualquer caixa e com sublinhado", () => {
+  for (const t of ["[NEEDTOOLS]", "  [NEEDTOOLS]", "[emo:neutro] [NEEDTOOLS]", "[emo:neutro][needtools]",
+    "[EMO: triste ] [NEED_TOOLS] ", "[NEEDTOOLS] e mais texto", "[ NEEDTOOLS ]"]) {
+    assert.equal(detectNeedTools(t), "yes", t);
+  }
+});
+
+test("detectNeedTools: resposta normal é 'no' assim que dá para saber", () => {
+  for (const t of ["[emo:alegre] Fechou, chefe.", "Oi, tudo certo.", "[1] é a opção", "[emo:neutro] Claro. [NEEDTOOLS]"]) {
+    assert.equal(detectNeedTools(t), "no", t);
+  }
+});
+
+test("detectNeedTools: pedaços incompletos esperam (maybe)", () => {
+  for (const t of ["", "[", "[N", "[NEED", "[NEED_TOOLS", "[NEEDTOOLS", "[e", "[emo", "[emo:ale", "[emo:neutro]", "[emo:neutro] [", "[emo:neutro] [NEE"]) {
+    assert.equal(detectNeedTools(t), "maybe", JSON.stringify(t));
+  }
+});
+
+test("detectNeedTools: cortado em pedaços de 1 caractere chega ao mesmo veredito", () => {
+  const text = "[emo:neutro] [NEEDTOOLS]";
+  let buf = "", verdict = "maybe";
+  for (const ch of text) { buf += ch; verdict = detectNeedTools(buf); if (verdict !== "maybe") break; }
+  assert.equal(verdict, "yes");
+  const text2 = "[emo:alegre] Fechou";
+  buf = ""; verdict = "maybe";
+  for (const ch of text2) { buf += ch; verdict = detectNeedTools(buf); if (verdict !== "maybe") break; }
+  assert.equal(verdict, "no");
 });

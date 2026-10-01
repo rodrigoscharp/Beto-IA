@@ -20,6 +20,7 @@ const MAX_CHUNK      = 220;   // frase gigante sem pontuação: corta num espaç
 const EMO_TAG_G  = /\[\s*emo[^\]:\n]*:?\s*([^\]\n]*?)\s*\]\s*/gi;
 const ACTION_AT  = /^\[[A-Z][A-Z_]*:/;
 const ACTION_ANY = /\[[A-Z][A-Z_]*:/;
+const NEED_ANY   = /\[\s*NEED_?TOOLS/i;      // marcador de ferramentas, em qualquer caixa e com ou sem sublinhado
 
 export class ReplyStream {
   private all = "";
@@ -51,7 +52,7 @@ export class ReplyStream {
       if (t === "") return;
       if (t[0] !== "[") { this.mode = "speak"; this.buf = t; return; }
 
-      if (ACTION_AT.test(t) || /^\[\s*NEEDTOOLS/i.test(t)) {
+      if (ACTION_AT.test(t) || /^\[\s*NEED_?TOOLS/i.test(t)) {
         this.mode = "hold";
         out.push({ type: "hold", late: false });
         return;
@@ -81,7 +82,9 @@ export class ReplyStream {
     this.buf = this.buf.replace(EMO_TAG_G, "");
 
     // Tag de ação no meio do texto: fala o que veio antes e passa a segurar o resto.
-    const at = this.buf.search(ACTION_ANY);
+    const a1 = this.buf.search(ACTION_ANY);
+    const a2 = this.buf.search(NEED_ANY);
+    const at = a1 < 0 ? a2 : a2 < 0 ? a1 : Math.min(a1, a2);
     if (at >= 0) {
       this.buf = this.buf.slice(0, at);
       this.flush(out, true);

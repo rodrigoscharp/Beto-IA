@@ -63,6 +63,8 @@ export class SpeechQueue {
   cancel(): void {
     this.cancelled = true;
     this.playing?.stop();
+    // Áudio que já foi buscado (ou ainda está chegando) e não vai tocar: libera o endereço.
+    for (const item of this.items) item.url?.then((u) => { if (u) this.deps.revoke?.(u); });
     this.wake?.();
     this.resolveFinished();
   }

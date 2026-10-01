@@ -4,7 +4,7 @@ import { listMemories } from "@/lib/supabase";
 import { getMyHubContext, myHubPromptBlock, type MyHubContext } from "@/lib/myhub";
 import { getBrasiliaTime } from "@/lib/time";
 import { needsTools } from "@/lib/intent";
-import { buildSystemPrompt, NEED_TOOLS_TAG, type PromptMode } from "@/lib/prompt";
+import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 
 type Memories = { content: string; category: string }[];
 type Msg = { role: string; content: string };
@@ -57,9 +57,9 @@ async function openReply(apiKey: string, messages: Msg[], mode: PromptMode, memo
       const r = await gen.next();
       if (r.done) break;
       buf += r.value;
-      if (buf.length >= NEED_TOOLS_TAG.length || !NEED_TOOLS_TAG.startsWith(buf)) break;
+      if (detectNeedTools(buf) !== "maybe") break;   // aceita [emo:X] antes, outra caixa e [NEED_TOOLS]
     }
-    if (buf.startsWith(NEED_TOOLS_TAG)) {
+    if (detectNeedTools(buf) === "yes") {
       await gen.return();
       retried = true;
       finalMode = "full";
@@ -78,7 +78,7 @@ async function openReply(apiKey: string, messages: Msg[], mode: PromptMode, memo
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, stream } = await req.json();
+    const { messages, stream, full: forceFull } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Payload inválido: messages é obrigatório." }, { status: 400 });
@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
     }
 
     const t0 = Date.now();
-    const mode: PromptMode = needsTools(messages) ? "full" : "chat";
+    // `full`: o cliente já viu o modo conversa falhar (disse que fez sem ter ferramenta) e pede o prompt completo.
+    const mode: PromptMode = forceFull === true || needsTools(messages) ? "full" : "chat";
     // Conversa simples não precisa do My Hub: pula a ida ao servidor dele.
     const [memories, myhub] = await Promise.all([getCachedMemories(), mode === "full" ? getMyHubContext() : Promise.resolve(null)]);
     const ctxMs = Date.now() - t0;
@@ -100,19 +101,27 @@ export async function POST(req: NextRequest) {
       const ttftMs = Date.now() - t0;
       const encoder = new TextEncoder();
       let chars = head.length;
+      let cancelled = false;
       const body = new ReadableStream<Uint8Array>({
         async start(controller) {
+          const close = () => { try { controller.close(); } catch { /* já fechado ou cancelado */ } };
           try {
             controller.enqueue(encoder.encode(head));
-            for await (const piece of gen) { chars += piece.length; controller.enqueue(encoder.encode(piece)); }
-            controller.close();
+            for await (const piece of gen) {
+              if (cancelled) break;   // o cliente desistiu (tocou no orbe, novo turno): para de gastar tokens
+              chars += piece.length;
+              controller.enqueue(encoder.encode(piece));
+            }
+            close();
           } catch (e) {
-            console.error("[Beto API] stream interrompido:", e);
-            controller.close();   // o cliente fala o que já recebeu
+            if (!cancelled) console.error("[Beto API] stream interrompido:", e);
+            close();   // o cliente fala o que já recebeu
           } finally {
-            logMetric({ mode: usedMode, stream: true, model: workingModel(), ctx_ms: ctxMs, ttft_ms: ttftMs, total_ms: Date.now() - t0, chars, retried });
+            await gen.return().catch(() => {});
+            logMetric({ mode: usedMode, stream: true, model: workingModel(), ctx_ms: ctxMs, ttft_ms: ttftMs, total_ms: Date.now() - t0, chars, retried, cancelled });
           }
         },
+        cancel() { cancelled = true; },
       });
       return new NextResponse(body, {
         headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "x-beto-mode": usedMode },
@@ -127,7 +136,7 @@ export async function POST(req: NextRequest) {
     let reply = await run(mode, myhub);
     let usedMode = mode;
     let retried = false;
-    if (mode === "chat" && reply.trimStart().startsWith(NEED_TOOLS_TAG)) {
+    if (mode === "chat" && detectNeedTools(reply) === "yes") {
       retried = true;
       usedMode = "full";
       reply = await run("full", await getMyHubContext());

@@ -25,8 +25,19 @@ const TOOL_WORDS = new RegExp(
     // My Hub (gastos, hábitos, tarefas)
     "gast\\w*", "receb\\w*", "regist\\w*", "habito\\w*", "treino\\w*", "treinei", "estudei", "bebi", "paguei",
     "comprei", "tarefa\\w*", "meta\\w*", "saldo", "fatura\\w*", "financ\\w*", "orcamento", "my ?hub", "lanc\\w*",
+    // Registros no passado e valores ("almocei 35 reais", "fui na academia", "corri 5 km")
+    "almoc\\w*", "jantei", "cafe da manha", "corri", "corrida", "academia", "malhei", "caminhei", "pedalei", "nadei",
+    "medit\\w*", "dormi", "reais", "real", "conto", "pila", "dolar\\w*", "euros?", "quilometr\\w*", "km", "uber", "mercado",
+    "pagu\\w*", "pago", "conta de \\w+",
+    // Controle de música e leitura de email ditos de outro jeito
+    "coloc\\w*", "bota\\w*", "poe", "abaixa\\w*", "aumenta\\w*", "diminui\\w*", "mais alto", "mais baixo", "silencio",
+    "le", "leia", "abre", "abra",
+    // Dia a dia
+    "meu dia", "minha agenda", "minhas tarefas", "daqui",
   ].join("|") + ")\\b",
 );
+
+const AFFIRMATIVE = /^(sim|pode|quero|claro|manda|bora|vai|isso|ok|beleza|aham|uhum|fechado|por favor|nao|negativo)\b/;
 
 /* minúsculo, sem acento, sem a tag de emoção do histórico */
 const norm = (s: string) =>
@@ -47,10 +58,13 @@ export function needsTools(messages: ChatMsg[]): boolean {
 
   if (words(text) < 3) return true;           // "sim", "quero", "a segunda": pode responder a uma oferta
   if (TOOL_WORDS.test(text)) return true;
+  if (/\d/.test(text)) return true;           // número quase sempre é valor, hora ou quantidade: prompt completo
 
-  // O Beto acabou de perguntar algo e a resposta é curta: pode ser "sim" para um briefing, um email, uma ação.
+  // O Beto fez uma pergunta (em qualquer ponto do fim da fala) e a resposta curta é "sim", "pode", "quero"...:
+  // provavelmente aceita uma oferta (briefing, email, ação). Resposta curta que não é sim/não segue como conversa.
   const prev = messages[lastUser - 1];
-  if (prev && prev.role === "assistant" && /\?\s*$/.test(norm(prev.content)) && words(text) < 6) return true;
+  if (prev && prev.role === "assistant" && words(text) < 6 && AFFIRMATIVE.test(text)
+      && norm(prev.content).slice(-200).includes("?")) return true;
 
   return false;
 }

@@ -164,3 +164,16 @@ test("isCancelled só vira true depois do cancel", async () => {
   q.cancel();
   assert.equal(q.isCancelled(), true);
 });
+
+test("cancel libera os áudios já buscados que não chegaram a tocar e os que ainda estavam chegando", async () => {
+  const { deps, log, fetches } = fakes();
+  const q = new SpeechQueue(deps);
+  q.push("um"); q.push("dois");
+  await flush();
+  fetches[0].resolve();                 // "um" fica pronto e começa a tocar
+  await flush();
+  q.cancel();
+  fetches[1].resolve();                 // "dois" chega só depois do cancel
+  await flush();
+  assert.ok(log.includes("revoke:url:dois"), log.join(" | "));
+});

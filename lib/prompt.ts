@@ -22,6 +22,18 @@ export const NEED_TOOLS_TAG = "[NEEDTOOLS]";
 
 const CHAT_TOOLS_NOTE = `NESTA CONVERSA você não tem as ferramentas de música, agenda, email, GitHub, timer, briefing, memória nem My Hub. Se ele pedir uma AÇÃO dessas, ou algo que dependa de dados dessas contas, responda SOMENTE ${NEED_TOOLS_TAG}, sem mais nenhuma palavra e sem tag de emoção. Qualquer outra coisa, responda normalmente.`;
 
+/* O marcador pode vir sozinho, depois da tag de emoção, em outra caixa ou com sublinhado ([NEED_TOOLS]).
+   Em streaming a resposta chega em pedaços: "maybe" = ainda não dá para saber, continue lendo. */
+export function detectNeedTools(buf: string): "yes" | "no" | "maybe" {
+  const rest = buf.replace(/^\s*(?:\[\s*emo[^\]\n]*\]\s*)*/i, "");
+  if (rest === "") return "maybe";
+  if (/^\[\s*NEED_?TOOLS\s*\]/i.test(rest)) return "yes";
+  if (/^\[\s*(?:e|em|emo[^\]\n]{0,40})?$/i.test(rest)) return "maybe";                 // pode virar [emo:…]
+  const squeezed = rest.replace(/[\s_]/g, "").toUpperCase();
+  if (!rest.includes("]") && "[NEEDTOOLS".startsWith(squeezed)) return "maybe";          // pode virar [NEEDTOOLS]
+  return "no";
+}
+
 export function buildSystemPrompt(input: PromptInput, mode: PromptMode): string {
   const { memories, myhubBlock, date, dateLabel, time, period } = input;
   const full = mode === "full";
