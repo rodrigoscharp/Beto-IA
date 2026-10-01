@@ -100,3 +100,22 @@ test("mais de 4 chamadas no mesmo passo: só as 4 primeiras rodam", async () => 
 test("erro do modelo (complete) sobe para quem chamou", async () => {
   await assert.rejects(runToolLoop({ messages: [], complete: async () => { throw new Error("groq caiu"); }, execute: async () => ({}) }), /groq caiu/);
 });
+
+test("limite de passos com finalize: a última chamada (sem ferramentas) resume o que foi feito", async () => {
+  const s = script(Array.from({ length: 10 }, () => turn("", [{ name: "x" }])));
+  let seenByFinalize = null;
+  const r = await runToolLoop({
+    messages: [{ role: "user", content: "faz" }], complete: s.complete, execute: async () => ({ status: "created" }), maxSteps: 2,
+    finalize: async (msgs) => { seenByFinalize = msgs; return "  Marquei, chefe.  "; },
+  });
+  assert.equal(r.hitLimit, true);
+  assert.equal(r.text, "Marquei, chefe.");
+  assert.ok(seenByFinalize.some((m) => m.role === "tool"), "o resumo enxerga o resultado das ferramentas");
+});
+
+test("finalize que falha não derruba: texto vazio e hitLimit", async () => {
+  const s = script(Array.from({ length: 5 }, () => turn("", [{ name: "x" }])));
+  const r = await runToolLoop({ messages: [], complete: s.complete, execute: async () => ({}), maxSteps: 2, finalize: async () => { throw new Error("groq caiu"); } });
+  assert.equal(r.hitLimit, true);
+  assert.equal(r.text, "");
+});

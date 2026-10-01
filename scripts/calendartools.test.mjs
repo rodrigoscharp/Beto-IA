@@ -13,6 +13,7 @@ function fakeApi(seed = []) {
       calls.push(["list", { timeMin, timeMax, q, max }]);
       const lo = Date.parse(timeMin), hi = Date.parse(timeMax);
       return [...events.values()].filter((e) => {
+        if (!e.start) return true;   // evento quebrado vindo do Google: a API devolve mesmo assim
         const s = Date.parse(e.start.dateTime ?? `${e.start.date}T00:00:00-03:00`);
         const en = Date.parse(e.end.dateTime ?? `${e.end.date}T00:00:00-03:00`);
         return s < hi && en > lo && (!q || (e.summary ?? "").toLowerCase().includes(q.toLowerCase()));
@@ -32,7 +33,7 @@ function fakeApi(seed = []) {
   };
 }
 const ev = (id, summary, s, e, extra = {}) => ({ id, summary, start: { dateTime: `${s}:00-03:00` }, end: { dateTime: `${e}:00-03:00` }, ...extra });
-const ctx = (api, extra = {}) => ({ api, nowLocal: "2026-10-01T10:00", confirmed: false, userText: "marca uma reunião com joao@x.com e a@x.com na sexta", ...extra });
+const ctx = (api, extra = {}) => ({ api, nowLocal: "2026-10-01T10:00", confirmed: false, userText: "marca uma reunião com joao@x.com e a@x.com na sexta", lastAssistant: "", writeIntent: true, state: { destructive: 0 }, ...extra });
 const run = (name, args, c) => executeCalendarTool(name, args, c);
 
 test("definições: 5 ferramentas, esquema válido, serializável e enxuto", () => {
@@ -126,7 +127,10 @@ test("create_event: conflito não cria; com ignore_conflicts cria", async () => 
   assert.equal(r.status, "conflict");
   assert.deepEqual(r.conflicts.map((c) => c.title), ["Almoço"]);
   assert.ok(!api.calls.some((c) => c[0] === "insert"));
-  const r2 = await run("create_event", { title: "Call", start: "2026-10-02T12:30", ignore_conflicts: true }, ctx(api));
+  const sem = await run("create_event", { title: "Call", start: "2026-10-02T12:30", ignore_conflicts: true }, ctx(api));
+  assert.equal(sem.status, "conflict", "ignore_conflicts sem o 'sim' do chefe não vale");
+  const r2 = await run("create_event", { title: "Call", start: "2026-10-02T12:30", ignore_conflicts: true },
+    ctx(api, { confirmed: true, lastAssistant: "tem conflito com o almoco. marco mesmo assim?" }));
   assert.equal(r2.status, "created");
 });
 
@@ -171,7 +175,7 @@ test("update_event: evento com convidados exige confirmação do chefe (e só en
   const r = await run("update_event", { event_id: "e1", start: "2026-10-03T15:00" }, ctx(api));
   assert.equal(r.status, "needs_confirmation");
   assert.ok(!api.calls.some((c) => c[0] === "patch"));
-  const r2 = await run("update_event", { event_id: "e1", start: "2026-10-03T15:00" }, ctx(api, { confirmed: true }));
+  const r2 = await run("update_event", { event_id: "e1", start: "2026-10-03T15:00" }, ctx(api, { confirmed: true, lastAssistant: "posso remarcar a reuniao das 15h para sabado?" }));
   assert.equal(r2.status, "updated");
   assert.equal(api.calls.find((c) => c[0] === "patch")[3].sendUpdates, "all");
 });
@@ -193,16 +197,17 @@ test("delete_event: SEMPRE pede confirmação; só apaga com confirmed", async (
   assert.match(r.instruction, /confirm/i);
   assert.ok(api.events.has("e1"));
   assert.ok(!api.calls.some((c) => c[0] === "remove"));
-  const r2 = await run("delete_event", { event_id: "e1" }, ctx(api, { confirmed: true }));
+  const r2 = await run("delete_event", { event_id: "e1" }, ctx(api, { confirmed: true, lastAssistant: "cancelo a reuniao com o joao amanha as 15h?" }));
   assert.equal(r2.status, "deleted");
   assert.ok(!api.events.has("e1"));
 });
 
 test("delete_event: não encontrado e sem event_id; convidados são avisados só depois de confirmar", async () => {
   const api = fakeApi([ev("g", "Com convidado", "2026-10-02T15:00", "2026-10-02T16:00", { attendees: [{ email: "a@x.com" }] })]);
-  assert.match((await run("delete_event", { event_id: "nada" }, ctx(api, { confirmed: true }))).error, /encontrad/i);
-  assert.match((await run("delete_event", {}, ctx(api, { confirmed: true }))).error, /event_id/i);
-  await run("delete_event", { event_id: "g" }, ctx(api, { confirmed: true }));
+  const yes = { confirmed: true, lastAssistant: "cancelo o com convidado das 15h?" };
+  assert.match((await run("delete_event", { event_id: "nada" }, ctx(api, yes))).error, /encontrad/i);
+  assert.match((await run("delete_event", {}, ctx(api, yes))).error, /event_id/i);
+  await run("delete_event", { event_id: "g" }, ctx(api, yes));
   assert.equal(api.calls.find((c) => c[0] === "remove")[2].sendUpdates, "all");
 });
 
@@ -219,4 +224,76 @@ test("create_event: sem texto do chefe no contexto, nenhum convidado passa", asy
   const api = fakeApi();
   const r = await run("create_event", { title: "x", start: "2026-10-02T15:00", attendees: ["a@x.com"] }, ctx(api, { userText: "" }));
   assert.match(r.error, /chefe/i);
+});
+
+const GUEST = { attendees: [{ email: "eu@x.com", self: true }, { email: "joao@x.com" }] };
+
+test("escrita só com intenção do chefe: leitura continua, criar/mudar/apagar são recusados", async () => {
+  const api = fakeApi([ev("e1", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00")]);
+  const c = ctx(api, { writeIntent: false });
+  assert.ok((await run("list_events", {}, c)).events);
+  assert.ok((await run("find_free_slots", { date: "2026-10-02" }, c)).slots);
+  for (const [n, a] of [["create_event", { title: "x", start: "2026-10-02T17:00" }], ["update_event", { event_id: "e1", title: "y" }], ["delete_event", { event_id: "e1" }]]) {
+    assert.match((await run(n, a, c)).error, /não pediu/i, n);
+  }
+  assert.ok(!api.calls.some((x) => ["insert", "patch", "remove"].includes(x[0])));
+});
+
+test("confirmação presa ao evento: a pergunta do Beto precisa citar o título (e o horário se o título for curto)", async () => {
+  const api = fakeApi([ev("e1", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00"), ev("e2", "Call", "2026-10-02T11:00", "2026-10-02T12:00")]);
+  const generica = await run("delete_event", { event_id: "e1" }, ctx(api, { confirmed: true, lastAssistant: "quer que eu mude de musica?" }));
+  assert.equal(generica.status, "needs_confirmation", "pergunta sem o título não confirma");
+  const outro = await run("delete_event", { event_id: "e1" }, ctx(api, { confirmed: true, lastAssistant: "cancelo a call das 11h?" }));
+  assert.equal(outro.status, "needs_confirmation", "confirmou OUTRO evento");
+  const curto = await run("delete_event", { event_id: "e2" }, ctx(api, { confirmed: true, lastAssistant: "cancelo a call de amanha?" }));
+  assert.equal(curto.status, "needs_confirmation", "título curto sem horário não basta");
+  const ok = await run("delete_event", { event_id: "e2" }, ctx(api, { confirmed: true, lastAssistant: "cancelo a call de amanha as 11h?" }));
+  assert.equal(ok.status, "deleted");
+  assert.ok(api.events.has("e1"));
+});
+
+test("só UMA ação destrutiva por requisição (nada de apagar várias com um 'sim')", async () => {
+  const api = fakeApi([ev("a", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00"), ev("b", "Reunião com o João", "2026-10-03T15:00", "2026-10-03T16:00")]);
+  const c = ctx(api, { confirmed: true, lastAssistant: "cancelo a reuniao com o joao das 15h?" });
+  assert.equal((await run("delete_event", { event_id: "a" }, c)).status, "deleted");
+  assert.match((await run("delete_event", { event_id: "b" }, c)).error, /uma ação destrutiva/i);
+  assert.ok(api.events.has("b"));
+});
+
+test("série recorrente inteira não é apagada nem alterada; ocorrência avisa que é recorrente", async () => {
+  const api = fakeApi([ev("serie", "Daily", "2026-10-02T09:00", "2026-10-02T09:15", { recurrence: ["RRULE:FREQ=DAILY"] }),
+    ev("serie_20261002", "Daily", "2026-10-02T09:00", "2026-10-02T09:15", { recurringEventId: "serie" })]);
+  const c = ctx(api, { confirmed: true, lastAssistant: "cancelo o daily das 9h?" });
+  assert.match((await run("delete_event", { event_id: "serie" }, c)).error, /série/i);
+  assert.match((await run("update_event", { event_id: "serie", title: "x" }, c)).error, /série/i);
+  assert.ok(api.events.has("serie"));
+  const lst = await run("list_events", { start: "2026-10-02", end: "2026-10-02" }, c);
+  assert.ok(lst.events.find((e) => e.id === "serie_20261002").recurring);
+});
+
+test("create_event no passado é recusado (resolveu 'sexta' errado)", async () => {
+  const api = fakeApi();
+  assert.match((await run("create_event", { title: "x", start: "2026-09-25T15:00" }, ctx(api))).error, /passou/i);
+  assert.equal((await run("create_event", { title: "x", start: "2026-10-01T10:30" }, ctx(api))).status, "created");
+  assert.match((await run("update_event", { event_id: "n", start: "2026-09-25T15:00" }, ctx(fakeApi([ev("n", "N", "2026-10-02T15:00", "2026-10-02T16:00")])))).error, /passou/i);
+});
+
+test("convidado por voz: 'arroba' e 'ponto' viram email; igualdade exata (ana@x.com não vale para ana@x.com.br)", async () => {
+  const api = fakeApi();
+  const dito = ctx(api, { userText: "marca com a joão arroba empresa ponto com ponto br amanhã" });
+  assert.equal((await run("create_event", { title: "x", start: "2026-10-02T15:00", attendees: ["joao@empresa.com.br"] }, dito)).status, "created");
+  const quase = await run("create_event", { title: "x", start: "2026-10-02T16:00", attendees: ["ana@x.com"] }, ctx(api, { userText: "convida a ana@x.com.br" }));
+  assert.match(quase.error, /chefe/i);
+});
+
+test("evento sem horário válido vindo do Google não derruba a listagem", async () => {
+  const api = fakeApi([ev("ok", "Bom", "2026-10-02T10:00", "2026-10-02T11:00"), { id: "ruim", summary: "Quebrado" }]);
+  const r = await run("list_events", { start: "2026-10-02", end: "2026-10-02" }, ctx(api));
+  assert.deepEqual(r.events.map((e) => e.id), ["ok"]);
+});
+
+test("convite de outro organizador (sem lista de convidados) exige confirmação para remarcar", async () => {
+  const api = fakeApi([ev("o", "Planejamento do Pedro", "2026-10-02T15:00", "2026-10-02T16:00", { organizer: { email: "pedro@x.com", self: false } })]);
+  const r = await run("update_event", { event_id: "o", start: "2026-10-03T15:00" }, ctx(api));
+  assert.equal(r.status, "needs_confirmation");
 });

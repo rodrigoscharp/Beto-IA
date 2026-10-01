@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsTools, userConfirmed, wantsCalendar } from "../lib/intent.ts";
+import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite } from "../lib/intent.ts";
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -148,4 +148,50 @@ test("pedidos de agenda nunca vão pelo streaming de conversa (needsTools)", () 
     assert.equal(needsTools([u(t)]), true, t);
   }
   assert.equal(needsTools([ask("Cancelo a reunião com o João amanhã às 15h?"), u("pode sim")]), true);
+});
+
+/* ── Achados da revisão das ferramentas ─────────────────────────────────── */
+
+test("confirmação só vale como afirmativa PURA: 'sim' + nova ordem não confirma", () => {
+  const q = ask("Cancelo a reunião com o João amanhã às 15h?");
+  for (const t of ["pode apagar todas de amanhã", "sim, apaga todas de amanhã", "sim e cancela a do Pedro também", "pode cancelar tudo", "claro, e remarca a outra"]) {
+    assert.equal(userConfirmed([q, u(t)]), false, t);
+  }
+  for (const t of ["sim", "Sim, pode", "pode cancelar", "pode sim", "confirma", "isso mesmo", "beleza pode", "claro chefe", "fechado"]) {
+    assert.equal(userConfirmed([q, u(t)]), true, t);
+  }
+});
+
+test("confirmação: a PERGUNTA tem de ser a última frase do Beto e ser sobre cancelar/remarcar/marcar", () => {
+  assert.equal(userConfirmed([ask("Pronto, mudei o título. Quer mais algo?"), u("sim")]), false);
+  assert.equal(userConfirmed([ask("Cancelo a reunião com o João amanhã. Quer mais algo?"), u("sim")]), false);
+  assert.equal(userConfirmed([ask("Tem conflito com o Almoço. Marco mesmo assim?"), u("pode")]), true);
+  assert.equal(userConfirmed([ask("Cancelo a reunião com o João amanhã às 15h?"), u("sim")]), true);
+});
+
+test("wantsCalendar: falsos positivos do dia a dia não entram no Calendar", () => {
+  for (const t of ["qual a melhor marca de tênis", "o Marcos ligou ontem", "em março eu viajo para a praia", "tenho algum email novo hoje",
+    "software livre é bom para empresa", "o que eu como no almoço hoje", "como marcar presença numa planilha do excel"]) {
+    assert.equal(wantsCalendar([u(t)]), false, t);
+  }
+});
+
+test("wantsCalendar: pedidos reais continuam, inclusive verbos de mover e eventos sem a palavra agenda", () => {
+  for (const t of ["marca uma reunião amanhã às 15h", "marque o dentista para sexta", "remarca a call de hoje", "desmarca o almoço de amanhã",
+    "joga a call do João pra amanhã", "muda a consulta para sexta de manhã", "adia a reunião para a semana que vem",
+    "estou livre amanhã à tarde", "o que tenho amanhã", "tenho algum compromisso na segunda", "qual meu próximo evento",
+    "acha um horário livre na quinta", "agenda um café com a Ana sexta"]) {
+    assert.equal(wantsCalendar([u(t)]), true, t);
+  }
+});
+
+test("wantsCalendarWrite: só liberar escrita quando o chefe pediu para criar/mudar/cancelar", () => {
+  for (const t of ["marca uma reunião amanhã", "remarca a call pra sexta", "cancela o almoço", "joga isso pra quinta", "cria um evento hoje", "adia a reunião"]) {
+    assert.equal(wantsCalendarWrite([u(t)]), true, t);
+  }
+  for (const t of ["o que tenho amanhã", "tenho algum compromisso na segunda", "estou livre quinta", "qual meu próximo evento", "me lê a agenda de hoje"]) {
+    assert.equal(wantsCalendarWrite([u(t)]), false, t);
+  }
+  assert.equal(wantsCalendarWrite([ask("Cancelo a reunião com o João amanhã às 15h?"), u("sim")]), true, "confirmação conta");
+  assert.equal(wantsCalendarWrite([ask("E você, como tá?"), u("sim")]), false);
 });

@@ -3,7 +3,7 @@ import { groqChat, groqChatStream, groqComplete, workingModel } from "@/lib/groq
 import { listMemories } from "@/lib/supabase";
 import { getMyHubContext, myHubPromptBlock, type MyHubContext } from "@/lib/myhub";
 import { getBrasiliaTime } from "@/lib/time";
-import { needsTools, userConfirmed, wantsCalendar } from "@/lib/intent";
+import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite } from "@/lib/intent";
 import { runToolLoop, type LoopMsg } from "@/lib/toolloop";
 import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/calendar";
 import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
@@ -33,13 +33,31 @@ async function replyWithCalendar(req: NextRequest, apiKey: string, messages: Msg
   const [myhub, token] = await Promise.all([getMyHubContext(), getGoogleToken(req)]);
   const t = getBrasiliaTime();
   const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
-  const ctx: ToolCtx = { api: token ? googleCalendarApi(token) : null, nowLocal: `${t.date}T${t.time}`, confirmed: userConfirmed(messages), userText };
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "user") { lastUser = i; break; }
+  const before = lastUser > 0 ? messages[lastUser - 1] : undefined;
+  const ctx: ToolCtx = {
+    api: token ? googleCalendarApi(token) : null,
+    nowLocal: `${t.date}T${t.time}`,
+    confirmed: userConfirmed(messages),
+    userText,                                                   // só o que o CHEFE falou (nunca texto de evento)
+    lastAssistant: before?.role === "assistant" ? before.content : "",
+    writeIntent: wantsCalendarWrite(messages),
+    state: { destructive: 0 },
+  };
   let needsLogin = false;
   const result = await runToolLoop({
     messages: [{ role: "system", content: promptFor("full", memories, myhub, true) }, ...messages] as LoopMsg[],
     complete: async (msgs) => {
       const c = await groqComplete(apiKey, { messages: msgs, tools: CALENDAR_TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 700 } as never);
       return { content: c.content, toolCalls: c.toolCalls };
+    },
+    finalize: async (msgs) => {
+      const c = await groqComplete(apiKey, {
+        messages: [...msgs, { role: "system", content: "Pare de usar ferramentas. Em uma frase curta e falada, diga ao chefe o que já foi feito na agenda e o que ficou faltando." }] as never,
+        temperature: 0.3, max_tokens: 300,
+      } as never);
+      return c.content;
     },
     execute: async (name, args) => {
       try {
@@ -52,7 +70,11 @@ async function replyWithCalendar(req: NextRequest, apiKey: string, messages: Msg
       }
     },
   });
-  const text = result.text || (result.hitLimit ? "Não consegui concluir isso na agenda agora, chefe." : "");
+  const acted = result.calls.some((c) => c.ok && /^(create|update|delete)_event$/.test(c.name));
+  let text = result.text || (result.hitLimit
+    ? (acted ? "Fiz parte do pedido na agenda, mas não consegui terminar. Confere lá, chefe." : "Não consegui concluir isso na agenda agora, chefe.")
+    : "");
+  if (detectNeedTools(text) === "yes") text = "Não consegui fazer isso agora, chefe.";   // o marcador interno nunca chega ao chefe
   return { text, needsLogin, steps: result.steps, tools: result.calls.map((c) => (c.ok ? c.name : `${c.name}:erro`)) };
 }
 
@@ -180,8 +202,9 @@ export async function POST(req: NextRequest) {
       steps = r.steps;
       return r.text;
     };
-    // Agenda (ou a escalada do cliente com `full`): o prompt completo vai junto com as ferramentas do Calendar.
-    if (mode === "full" && (forceFull === true || wantsCalendar(messages))) {
+    // Pedido de agenda: o prompt completo vai junto com as ferramentas do Calendar. (`full` do cliente só força o prompt
+    // completo; não liga as ferramentas da agenda por si: o registro do My Hub, por exemplo, não precisa delas.)
+    if (mode === "full" && wantsCalendar(messages)) {
       reply = await viaCalendar();
     } else {
       reply = await run(mode, myhub);
@@ -193,7 +216,11 @@ export async function POST(req: NextRequest) {
       }
     }
     logMetric({ mode: usedMode, stream: false, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
-    return NextResponse.json({ reply, ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}) }, { headers: { "x-beto-model": workingModel() ?? "" } });
+    return NextResponse.json({
+      reply,
+      ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}),
+      ...(tools.length ? { usedTools: true } : {}),      // o cliente não duvida da resposta nem refaz o registro do My Hub
+    }, { headers: { "x-beto-model": workingModel() ?? "" } });
   } catch (error: unknown) {
     console.error("[Beto API] Erro:", error);
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

@@ -55,3 +55,16 @@ Trocar o jeito frágil de agir (o modelo escreve `[CALENDAR:{…}]` no meio do t
 
 - Sem documento de plano separado (execução delegada); as tarefas seguem a ordem das decisões.
 - Spotify e timer fora desta rodada por viverem no navegador.
+
+## Correções depois da revisão independente
+
+- **Resposta das ferramentas não é mais desmentida:** a rota devolve `usedTools` e o cliente não refaz o registro do My Hub quando a resposta veio das ferramentas ("Pronto, marquei" é verdade).
+- **Confirmação mais estrita:** vale só uma afirmativa PURA ("sim", "pode cancelar", "beleza pode"); "sim, apaga todas de amanhã" não confirma. A pergunta tem de ser a última frase do Beto. Além disso, o servidor confere que a pergunta **cita o evento** (título e, se o título for curto, o horário): um "sim" a outra pergunta não vale. No máximo **uma ação destrutiva por requisição**.
+- **`ignore_conflicts`** só vale com o "sim" do chefe a uma pergunta que citou o evento em conflito.
+- **Escrita só com intenção:** criar, remarcar e apagar exigem que o chefe tenha pedido (`wantsCalendarWrite`) ou confirmado; um pedido só de leitura não vira alteração por texto de evento de terceiros.
+- **Convite de outro organizador** e **série recorrente:** convite de outro organizador exige confirmação; a série inteira nunca é apagada nem alterada (só uma ocorrência, sinalizada como recorrente).
+- **Convidados:** só emails ditos pelo chefe, inclusive por voz ("arroba", "ponto"), com comparação por igualdade.
+- **Roteamento:** `wantsCalendar` sem os falsos positivos (marca de tênis, março, software livre, almoço sem verbo) e com verbos de mover (joga, passa, adia, muda). `full` do cliente não liga as ferramentas de agenda por si.
+- **Limite de passos:** ao bater no limite, uma última chamada sem ferramentas resume o que foi feito; se falhar, a frase diz que parte foi feita e pede para conferir.
+- **Robustez:** horário no passado recusado; "agora" arredondado para :00/:30 no horário livre; evento sem horário válido não derruba a listagem; cooldown de modelo separado para ferramentas; `[NEEDTOOLS]` nunca é falado; caminho antigo `[CALENDAR:]` e rota `/api/calendar/command` removidos.
+- **Adiado:** deslocamento fixo -03:00 (se o horário de verão voltar); paginação de mais de 100 eventos na listagem.

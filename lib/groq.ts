@@ -22,7 +22,12 @@ type ChatParams = Omit<Parameters<Groq["chat"]["completions"]["create"]>[0], "mo
 let working: string | null = null;
 export const workingModel = () => working;
 
-const cooldown = new Map<string, number>(); // model -> timestamp até quando pular
+/* Cooldown por "escopo": uma chamada de ferramenta malformada (400) num modelo não pode tirá-lo do chat comum nem do
+   streaming, e vice-versa. Modelo morto (404) vale para todos os escopos. */
+type Scope = "chat" | "tools";
+const cooldown = new Map<string, number>(); // "escopo|modelo" -> timestamp até quando pular
+const ckey = (scope: Scope, model: string) => `${scope}|${model}`;
+const cooling = (scope: Scope, model: string) => (cooldown.get(ckey(scope, model)) ?? 0) > Date.now();
 /* Modelo que respondeu 404/"não existe": não adianta tentar de novo a cada pergunta (cada tentativa é uma ida e volta
    perdida). Esquecido depois de 6 h, caso a Groq volte a oferecer. Vale por instância da função. */
 const DEAD_MS = 6 * 60 * 60 * 1000;
@@ -59,10 +64,10 @@ const newClient = (apiKey: string) =>
   new Groq({ apiKey, maxRetries: 0, timeout: 12_000, baseURL: process.env.GROQ_BASE_URL || undefined });
 
 /** Registra por que um modelo falhou (cooldown ou "morto"). Devolve true se o erro é fatal (chave inválida). */
-function noteFailure(model: string, e: unknown): boolean {
+function noteFailure(model: string, e: unknown, scope: Scope = "chat"): boolean {
   if (isFatalError(e)) return true; // chave inválida etc.: os outros 6 modelos vão falhar igual
   if (isModelError(e)) dead.set(model, Date.now() + DEAD_MS);
-  else cooldown.set(model, Date.now() + 20_000);
+  else cooldown.set(ckey(scope, model), Date.now() + 20_000);
   if (working === model) working = null;
   return false;
 }
@@ -76,7 +81,7 @@ async function attempt(groq: Groq, params: ChatParams, model: string) {
 }
 
 /** Percorre a lista de modelos (o que funcionou por último primeiro) até um responder. Mesma regra para texto e ferramentas. */
-async function withModels<T>(apiKey: string, call: (groq: Groq, model: string) => Promise<T>): Promise<T> {
+async function withModels<T>(apiKey: string, call: (groq: Groq, model: string) => Promise<T>, scope: Scope = "chat"): Promise<T> {
   const groq = newClient(apiKey);
   const tried = new Set<string>();
   let lastError: unknown;
@@ -84,13 +89,13 @@ async function withModels<T>(apiKey: string, call: (groq: Groq, model: string) =
 
   const run = async (models: string[], ignoreCooldown = false): Promise<T | typeof FAILED> => {
     for (const model of models) {
-      if (tried.has(model) || (!ignoreCooldown && ((cooldown.get(model) ?? 0) > Date.now() || isDead(model)))) continue;
+      if (tried.has(model) || (!ignoreCooldown && (cooling(scope, model) || isDead(model)))) continue;
       tried.add(model);
       try {
         return await call(groq, model);
       } catch (e) {
         lastError = e;
-        if (noteFailure(model, e)) throw e;
+        if (noteFailure(model, e, scope)) throw e;
       }
     }
     return FAILED;
@@ -135,7 +140,7 @@ export async function groqComplete(apiKey: string, params: ChatParams): Promise<
     if (!content && toolCalls.length === 0) throw new Error(`O modelo ${model} não devolveu nada.`);
     working = model;
     return { content, toolCalls, model };
-  });
+  }, "tools");
 }
 
 /* Streaming: devolve a resposta em pedaços de texto, com a mesma lista e a mesma troca de modelo. Só troca de
@@ -160,7 +165,7 @@ export async function* groqChatStream(apiKey: string, params: ChatParams): Async
   let lastError: unknown;
 
   for (const model of order) {
-    if (seen.has(model) || (cooldown.get(model) ?? 0) > Date.now() || isDead(model)) continue;
+    if (seen.has(model) || cooling("chat", model) || isDead(model)) continue;
     seen.add(model);
     let started = false;
     let stream: (AsyncIterable<unknown> & { controller?: AbortController }) | null = null;
@@ -193,7 +198,7 @@ export async function* groqChatStream(apiKey: string, params: ChatParams): Async
       if (tail) yield tail;
       if (started) return;
       lastError = new Error(`O modelo ${model} não devolveu texto.`);
-      cooldown.set(model, Date.now() + 20_000);
+      cooldown.set(ckey("chat", model), Date.now() + 20_000);
     } catch (e) {
       try { stream?.controller?.abort(); } catch { /* já encerrado */ }
       if (started) throw e;

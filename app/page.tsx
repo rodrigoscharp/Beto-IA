@@ -55,7 +55,6 @@ type Mode = "idle" | "wake" | "listening" | "thinking" | "speaking";
 
 interface Msg            { role: "user" | "assistant"; content: string }
 interface SpotifyAction  { action: string; query?: string; level?: number }
-interface CalendarAction { action: string; title?: string; date?: string; time?: string; duration?: number; query?: string }
 
 interface GmailAction    { action: string; days?: number; ref?: string }
 interface GithubAction   { action: string; repo?: string }
@@ -72,7 +71,6 @@ const WAKE_WORDS = ["beto", "olá beto", "ola beto", "hey beto", "ei beto", "aco
 
 const TAG = {
   SPOTIFY:  /\[SPOTIFY:(\{[\s\S]*?\})\]\s*/,
-  CALENDAR: /\[CALENDAR:(\{[\s\S]*?\})\]\s*/,
 
   GITHUB:   /\[GITHUB:(\{[\s\S]*?\})\]\s*/,
   GMAIL:    /\[GMAIL:(\{[\s\S]*?\})\]\s*/,
@@ -131,6 +129,7 @@ function sanitize(text: string): string {
   return text
     .replace(EMOTION_TAG, "")     // última defesa: a tag nunca é falada nem vai para a legenda
     .replace(/\[\s*NEED_?TOOLS\s*\]/gi, "")   // idem para o marcador interno de ferramentas
+    .replace(/\[CALENDAR:\{[\s\S]*?\}\]/g, "")  // a agenda é por ferramentas no servidor; a tag antiga nunca executa nada
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`\n]+`/g, "")
     .replace(/^\s*#{1,6}\s+/gm, "")
@@ -679,38 +678,6 @@ export default function JarvisPage() {
     } catch { return "Erro ao conectar com o Spotify."; }
   }
 
-  async function execCalendar(action: CalendarAction): Promise<string> {
-    try {
-      const res = await fetch("/api/calendar/command", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(action),
-      });
-      if (res.status === 401) {
-        window.location.href = "/api/calendar/login";
-        return "Redirecionando para o Google Calendar.";
-      }
-      const data = await res.json();
-      if (data.error) return data.error;
-
-      if (action.action === "create" && data.ok) {
-        const dt      = new Date(data.start);
-        const dateStr = dt.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
-        const timeStr = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-        return `Evento "${data.title}" criado para ${dateStr} às ${timeStr}.`;
-      }
-      if (action.action === "list") {
-        if (!data.events?.length) return "Você não tem eventos próximos na agenda.";
-        const list = data.events.map((e: { title: string; start: string }) => {
-          const dt = new Date(e.start.replace(/([+-]\d{2}:\d{2}|Z)$/, ""));
-          return `${e.title} — ${dt.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })} às ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-        }).join(". ");
-        return `Seus próximos eventos: ${list}.`;
-      }
-      return "Pronto.";
-    } catch { return "Erro ao conectar com o Google Calendar."; }
-  }
-
   async function execGmail(action: GmailAction): Promise<string> {
     try {
       // Ler UM email a fundo: "lê o segundo", "lê o da Maria", "lê esse"
@@ -1032,6 +999,7 @@ export default function JarvisPage() {
       let held: string | null = null;
       let alreadySpoken = false;
       let forceFull = false;
+      let usedTools = false;   // a resposta veio das ferramentas do servidor (agenda): ela JÁ executou o que disse
       if (!needsTools(msgs.slice(-20)) && !REGISTER_INTENT.test(text)) {
         const r = await streamReply(msgs, turn);
         if (r.done || turn !== turnSeq.current) return;
@@ -1055,11 +1023,13 @@ export default function JarvisPage() {
         // Agenda sem login do Google (ou sessão vencida): vai para o login, como o Calendar já fazia.
         if (data.needsGoogleLogin) { window.location.href = "/api/calendar/login"; return; }
         rawReply = data.reply as string;
+        usedTools = data.usedTools === true;
       }
       if (turn !== turnSeq.current) return;   // outro turno começou enquanto esperava
 
       // Disse que registrou mas não mandou a tag: nada foi gravado. Pede ao modelo para corrigir uma vez.
-      if (CLAIMS_WRITE.test(rawReply) && !HAS_TAG.test(rawReply) && REGISTER_INTENT.test(text)) {
+      // (Com ferramentas de agenda não: "Pronto, marquei" é verdade e o servidor já criou o evento.)
+      if (!usedTools && CLAIMS_WRITE.test(rawReply) && !HAS_TAG.test(rawReply) && REGISTER_INTENT.test(text)) {
         try {
           const retry = await fetch("/api/chat", {
             method:  "POST",
@@ -1086,7 +1056,6 @@ export default function JarvisPage() {
       };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
-      const calendar = parseTag<CalendarAction>(rawReply, TAG.CALENDAR);
 
       const github   = parseTag<GithubAction>(rawReply,   TAG.GITHUB);
       const gmail    = parseTag<GmailAction>(rawReply,    TAG.GMAIL);
@@ -1096,7 +1065,6 @@ export default function JarvisPage() {
       const myhub    = parseTag<MyHubAction>(rawReply,    TAG.MYHUB);
 
       if      (spotify.action)  say(await execSpotify(spotify.action));
-      else if (calendar.action) say(await execCalendar(calendar.action), true);
 
       else if (github.action)   say(await execGithub(github.action), true);
       else if (gmail.action)    say(await execGmail(gmail.action), true);

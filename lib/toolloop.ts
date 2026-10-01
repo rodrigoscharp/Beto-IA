@@ -31,6 +31,9 @@ export async function runToolLoop(o: {
   complete: (messages: LoopMsg[]) => Promise<AssistantTurn>;
   execute: (name: string, args: unknown, callId: string) => Promise<unknown>;
   maxSteps?: number;
+  /** Chamado ao bater no limite de passos, com tudo o que já aconteceu: devolve uma resposta SEM chamar ferramentas
+      (para o chefe não ouvir "não consegui" depois de a agenda já ter sido alterada). */
+  finalize?: (messages: LoopMsg[]) => Promise<string>;
 }): Promise<LoopResult> {
   const maxSteps = o.maxSteps ?? 4;
   const messages = [...o.messages];
@@ -71,5 +74,9 @@ export async function runToolLoop(o: {
       messages.push({ role: "tool", tool_call_id: c.id, content: pack(result) });
     }
   }
-  return { text: "", steps: maxSteps, calls, hitLimit: true };
+  let text = "";
+  if (o.finalize) {
+    try { text = (await o.finalize(messages)).trim(); } catch { /* quem chamou decide a frase de desculpa */ }
+  }
+  return { text, steps: maxSteps, calls, hitLimit: true };
 }

@@ -13,6 +13,9 @@ const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "jul
 
 export interface RawEvent {
   id?: string; summary?: string; status?: string; transparency?: string; location?: string; hangoutLink?: string;
+  organizer?: { email?: string; self?: boolean };
+  recurringEventId?: string;            // ocorrência de uma série
+  recurrence?: string[];                // evento-mestre de uma série
   start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
   attendees?: { email?: string; self?: boolean; resource?: boolean; responseStatus?: string }[];
 }
@@ -22,7 +25,10 @@ export interface Ev {
   start: string; end: string;          // locais; em evento de dia inteiro o fim é exclusivo (00:00 do dia seguinte)
   allDay: boolean; location: string | null;
   attendees: number;                   // convidados além de você
-  hasOthers: boolean; meetLink: string | null;
+  hasOthers: boolean;                  // convidados além de você, ou convite de outro organizador
+  recurring: boolean;                  // é UMA ocorrência de uma série (mexer nela só afeta aquele dia)
+  series: boolean;                     // é a série inteira (mexer nela afeta todas as ocorrências)
+  meetLink: string | null;
   spoken: string;                      // "sexta-feira, 2 de outubro, das 15h às 16h"
   busy: boolean;                       // ocupa o horário: não cancelado, não "livre", não recusado
 }
@@ -115,11 +121,23 @@ export function normalizeEvent(raw: RawEvent): Ev {
     start, end, allDay,
     location: raw.location?.trim() || null,
     attendees: others,
-    hasOthers: others > 0,
+    hasOthers: others > 0 || raw.organizer?.self === false,
+    recurring: !!raw.recurringEventId,
+    series: (raw.recurrence?.length ?? 0) > 0,
     meetLink: raw.hangoutLink ?? null,
     spoken: spokenWhen(start, end, allDay),
     busy: raw.status !== "cancelled" && raw.transparency !== "transparent" && !declined,
   };
+}
+
+/** Como normalizeEvent, mas devolve null (em vez de lançar) para evento sem horário válido. */
+export function tryNormalize(raw: RawEvent): Ev | null {
+  try {
+    const e = normalizeEvent(raw);
+    return validLocal(e.start) && validLocal(e.end) ? e : null;
+  } catch {
+    return null;
+  }
 }
 
 /* ── Conflito e horário livre ────────────────────────────────────────────── */
@@ -151,7 +169,10 @@ export function freeSlots(o: {
 
   let day = o.fromDate;
   for (let i = 0; i < MAX_SPAN_DAYS && day <= o.toDate && out.length < o.max; i++) {
-    const winStart = Math.max(localToEpoch(`${day}T${pad(o.dayStartHour)}:00`), Number.isNaN(now) ? -Infinity : now);
+    // "Agora" arredondado para cima em :00 ou :30 (oferecer "das 14h37" soa estranho).
+    const HALF = 30 * 60_000;
+    const from = Number.isNaN(now) ? -Infinity : Math.ceil(now / HALF) * HALF;
+    const winStart = Math.max(localToEpoch(`${day}T${pad(o.dayStartHour)}:00`), from);
     const winEnd = localToEpoch(`${day}T${pad(o.dayEndHour)}:00`);
     let cursor = winStart;
     const push = (from: number, to: number) => {

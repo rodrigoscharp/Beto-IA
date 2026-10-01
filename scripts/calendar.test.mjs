@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  validLocal, localToEpoch, epochToLocal, addMinutes, normalizeEvent, spokenWhen, overlaps, conflictsFor, freeSlots,
+  validLocal, localToEpoch, epochToLocal, addMinutes, normalizeEvent, tryNormalize, spokenWhen, overlaps, conflictsFor, freeSlots,
 } from "../lib/calendar.ts";
 
 test("validLocal aceita YYYY-MM-DDTHH:MM (com ou sem segundos) e recusa lixo e datas impossíveis", () => {
@@ -90,7 +90,7 @@ test("freeSlots: duração maior que a janela descarta a janela", () => {
 
 test("freeSlots: não oferece horário que já passou hoje", () => {
   const r = freeSlots({ events: [], fromDate: "2026-10-02", toDate: "2026-10-02", durationMin: 60, dayStartHour: 9, dayEndHour: 18, max: 5, nowLocal: "2026-10-02T13:20" });
-  assert.deepEqual(r.map((s) => [s.start, s.end]), [["2026-10-02T13:20", "2026-10-02T18:00"]]);
+  assert.deepEqual(r.map((s) => [s.start, s.end]), [["2026-10-02T13:30", "2026-10-02T18:00"]], "arredonda para cima para :00 ou :30");
 });
 
 test("freeSlots: vários dias, limite de resultados e dia lotado", () => {
@@ -109,4 +109,33 @@ test("freeSlots: evento que atravessa a janela do dia é cortado", () => {
 test("freeSlots: intervalo de datas inválido ou invertido não quebra", () => {
   assert.deepEqual(freeSlots({ events: [], fromDate: "2026-10-05", toDate: "2026-10-02", durationMin: 60, dayStartHour: 9, dayEndHour: 18, max: 5, nowLocal: "2026-10-01T08:00" }), []);
   assert.deepEqual(freeSlots({ events: [], fromDate: "x", toDate: "y", durationMin: 60, dayStartHour: 9, dayEndHour: 18, max: 5, nowLocal: "2026-10-01T08:00" }), []);
+});
+
+test("freeSlots: 'agora' já em :00 ou :30 não é empurrado", () => {
+  const r = freeSlots({ events: [], fromDate: "2026-10-02", toDate: "2026-10-02", durationMin: 60, dayStartHour: 9, dayEndHour: 18, max: 5, nowLocal: "2026-10-02T14:30" });
+  assert.equal(r[0].start, "2026-10-02T14:30");
+  const r2 = freeSlots({ events: [], fromDate: "2026-10-02", toDate: "2026-10-02", durationMin: 60, dayStartHour: 9, dayEndHour: 18, max: 5, nowLocal: "2026-10-02T14:31" });
+  assert.equal(r2[0].start, "2026-10-02T15:00");
+});
+
+const base = { start: { dateTime: "2026-10-02T10:00:00-03:00" }, end: { dateTime: "2026-10-02T11:00:00-03:00" } };
+
+test("normalizeEvent: convite de outro organizador conta como 'com outros' mesmo sem lista de convidados", () => {
+  const e = normalizeEvent({ id: "o", summary: "x", ...base, organizer: { email: "chefe@x.com", self: false }, attendees: [{ email: "eu@x.com", self: true }] });
+  assert.equal(e.hasOthers, true);
+  const mine = normalizeEvent({ id: "m", summary: "x", ...base, organizer: { email: "eu@x.com", self: true } });
+  assert.equal(mine.hasOthers, false);
+});
+
+test("normalizeEvent: marca ocorrência de série e o evento-mestre da série", () => {
+  assert.deepEqual([normalizeEvent({ id: "i", ...base, recurringEventId: "serie" }).recurring, normalizeEvent({ id: "i", ...base, recurringEventId: "serie" }).series], [true, false]);
+  assert.deepEqual([normalizeEvent({ id: "s", ...base, recurrence: ["RRULE:FREQ=WEEKLY"] }).recurring, normalizeEvent({ id: "s", ...base, recurrence: ["RRULE:FREQ=WEEKLY"] }).series], [false, true]);
+  assert.deepEqual([normalizeEvent({ id: "n", ...base }).recurring, normalizeEvent({ id: "n", ...base }).series], [false, false]);
+});
+
+test("tryNormalize: evento sem início, com data inválida ou sem nada vira null em vez de derrubar a ferramenta", () => {
+  assert.equal(tryNormalize({ id: "a" }), null);
+  assert.equal(tryNormalize({ id: "b", start: { dateTime: "lixo" }, end: { dateTime: "lixo" } }), null);
+  assert.equal(tryNormalize({ id: "c", start: {}, end: {} }), null);
+  assert.equal(tryNormalize({ id: "ok", ...base })?.id, "ok");
 });

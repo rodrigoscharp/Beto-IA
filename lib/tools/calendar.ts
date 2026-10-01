@@ -4,13 +4,18 @@
    modelo corrigir; nada aqui lança por culpa do modelo.
 
    Regras que o SERVIDOR impõe, sem confiar no modelo:
-   - apagar evento, e remarcar evento com convidados, só executam com `ctx.confirmed` (o "sim" do chefe, ver userConfirmed);
-   - criar ou remarcar para um horário em conflito não acontece sem `ignore_conflicts`;
+   - criar, remarcar e apagar só rodam se o chefe PEDIU alterar a agenda (`writeIntent`): um título de evento escrito por
+     terceiros não vira alteração num pedido só de leitura;
+   - apagar evento, remarcar evento com convidados (ou de outro organizador) e marcar por cima de conflito só executam com
+     o "sim" do chefe (`confirmed`) E se a pergunta do Beto logo antes citou o evento (`lastAssistant`): um "sim" a outra
+     pergunta não vale. No máximo uma ação destrutiva por requisição (nada de apagar várias com um "sim");
+   - série recorrente inteira nunca é apagada nem alterada, só uma ocorrência;
+   - horário no passado é recusado (o modelo resolveu "sexta" errado);
    - convidado só recebe aviso quando há convidados e, no caso de alteração, depois da confirmação;
    - só entra convidado cujo email o próprio chefe disse (texto de convite de terceiros não vira convidado). */
 
 import {
-  TZ, addMinutes, conflictsFor, epochToLocal, freeSlots, localToEpoch, normalizeEvent, toRfc3339, validDate, validLocal,
+  TZ, addMinutes, conflictsFor, epochToLocal, freeSlots, localToEpoch, toRfc3339, tryNormalize, validDate, validLocal,
   type Ev, type RawEvent,
 } from "../calendar";
 
@@ -27,6 +32,9 @@ export interface ToolCtx {
   nowLocal: string;              // agora em São Paulo, "YYYY-MM-DDTHH:MM"
   confirmed: boolean;            // o chefe acabou de confirmar a ação (userConfirmed)
   userText: string;              // tudo o que o CHEFE falou nesta conversa (só ele; nunca texto de evento ou do modelo)
+  lastAssistant: string;         // a fala do Beto logo antes do "sim" do chefe (a pergunta de confirmação)
+  writeIntent: boolean;          // o chefe pediu para criar, mudar ou cancelar (wantsCalendarWrite)
+  state: { destructive: number };// ações destrutivas já executadas nesta requisição
 }
 
 export interface ToolDef {
@@ -74,11 +82,44 @@ const isObj = (a: unknown): a is Args => !!a && typeof a === "object" && !Array.
 const isStr = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const brief = (e: Ev) => ({ id: e.id, title: e.title, when: e.spoken, start: e.start, end: e.end, all_day: e.allDay, location: e.location, guests: e.attendees });
+const brief = (e: Ev) => ({
+  id: e.id, title: e.title, when: e.spoken, start: e.start, end: e.end, all_day: e.allDay, location: e.location, guests: e.attendees,
+  ...(e.recurring ? { recurring: true, note: "É uma ocorrência de evento recorrente: mexer nela afeta só este dia." } : {}),
+  ...(e.series ? { series: true } : {}),
+});
+
+/* minúsculo, sem acento nem pontuação */
+const plain = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+function hourMentioned(text: string, start: string): boolean {
+  const hh = Number(start.slice(11, 13)), mm = start.slice(14, 16);
+  const re = mm === "00"
+    ? new RegExp(`(^| )${hh} ?(h|horas?)( |$)`)
+    : new RegExp(`(^| )${hh} ?h ?${mm}( |$)|(^| )${hh} ${mm}( |$)`);
+  return re.test(text);
+}
+
+/** A fala do Beto citou o evento? Título (e o horário, se o título for curto): amarra o "sim" ao evento certo. */
+function mentionsEvent(assistantText: string, ev: Ev): boolean {
+  const t = plain(assistantText), title = plain(ev.title);
+  if (!title || !t.includes(title)) return false;
+  return title.length >= 8 || hourMentioned(t, ev.start);
+}
+
+/** Emails que o chefe disse (digitados ou falados: "joão arroba empresa ponto com"). Comparação por igualdade. */
+function saidEmails(userText: string): Set<string> {
+  const t = userText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/\s*\barroba\b\s*/g, "@").replace(/\s+\bponto\b\s+/g, ".");
+  return new Set(t.match(/[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/g) ?? []);
+}
+
+const NO_WRITE = "O chefe não pediu para alterar a agenda agora; só dá para consultar.";
+const SERIES = "Essa é uma série recorrente inteira; não mexo na série toda. Use list_events com as datas para pegar o id da ocorrência de um dia específico.";
+const PAST_MS = 5 * 60_000;
 const nextDay = (date: string) => epochToLocal(localToEpoch(`${date}T12:00`) + 24 * 3_600_000).slice(0, 10);
 const addDays = (date: string, n: number) => epochToLocal(localToEpoch(`${date}T12:00`) + n * 24 * 3_600_000).slice(0, 10);
 const daysBetween = (a: string, b: string) => Math.round((localToEpoch(`${b}T12:00`) - localToEpoch(`${a}T12:00`)) / (24 * 3_600_000));
-const when = (start: string, end: string) => normalizeEvent({ id: "", start: { dateTime: toRfc3339(start) }, end: { dateTime: toRfc3339(end) } }).spoken;
+const when = (start: string, end: string) => tryNormalize({ id: "", start: { dateTime: toRfc3339(start) }, end: { dateTime: toRfc3339(end) } })?.spoken ?? `${start} até ${end}`;
 
 function durationArg(v: unknown): number | { error: string } | undefined {
   if (v === undefined) return undefined;
@@ -88,11 +129,11 @@ function durationArg(v: unknown): number | { error: string } | undefined {
 
 async function eventsBetween(api: CalendarApi, startLocal: string, endLocal: string, extra: { q?: string; max?: number } = {}): Promise<Ev[]> {
   const raw = await api.list({ timeMin: toRfc3339(startLocal), timeMax: toRfc3339(endLocal), ...extra });
-  return raw.map(normalizeEvent).sort((a, b) => localToEpoch(a.start) - localToEpoch(b.start));
+  return raw.map(tryNormalize).filter((e): e is Ev => e !== null).sort((a, b) => localToEpoch(a.start) - localToEpoch(b.start));
 }
 
 const NEEDS_CONFIRMATION =
-  "Peça a confirmação ao chefe em UMA frase curta (diga o título e o horário) e só chame esta ferramenta de novo depois do sim dele. Não diga que já fez.";
+  "Peça a confirmação ao chefe em UMA frase curta que cite o TÍTULO EXATO do evento e o horário, e só chame esta ferramenta de novo depois do sim dele. Não diga que já fez.";
 
 export async function executeCalendarTool(name: string, args: unknown, ctx: ToolCtx): Promise<unknown> {
   if (!ctx.api) return { needsLogin: true, error: "O Google Calendar não está conectado." };
@@ -134,10 +175,12 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
     }
 
     case "create_event": {
+      if (!ctx.writeIntent) return fail(NO_WRITE);
       if (!isStr(args.title)) return fail("title é obrigatório.");
       if (args.start === undefined) return fail("start é obrigatório (YYYY-MM-DDTHH:MM, hora de São Paulo).");
       const start = String(args.start);
       if (!validLocal(start)) return fail("start precisa estar no formato YYYY-MM-DDTHH:MM (hora de São Paulo).");
+      if (localToEpoch(start) < localToEpoch(ctx.nowLocal) - PAST_MS) return fail(`start já passou (agora são ${ctx.nowLocal.replace("T", " ")}). Confira o dia.`);
       const dur = durationArg(args.duration_min);
       if (typeof dur === "object") return dur;
       let end: string;
@@ -157,16 +200,16 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
         attendees = args.attendees.map((a) => String(a).trim());
         // Títulos e descrições de eventos vêm de convites de terceiros e podem tentar induzir o modelo a convidar alguém
         // (o Google mandaria o convite). Só entra convidado cujo email o próprio chefe disse.
-        const said = ctx.userText.toLowerCase();
-        const stranger = attendees.find((a) => !said.includes(a.toLowerCase()));
+        const said = saidEmails(ctx.userText);
+        const stranger = attendees.find((a) => !said.has(a.toLowerCase()));
         if (stranger) return fail(`Só convide emails que o chefe falou na conversa; ${stranger} não foi dito por ele. Marque sem esse convidado ou pergunte o email.`);
       }
 
-      if (args.ignore_conflicts !== true) {
-        const conflicts = conflictsFor(await eventsBetween(api, start, end), start, end);
-        if (conflicts.length) {
-          return { status: "conflict", conflicts: conflicts.map(brief), instruction: "Avise o chefe do conflito em uma frase e pergunte se marca mesmo assim. Se ele confirmar, chame create_event de novo com ignore_conflicts=true." };
-        }
+      const conflicts = conflictsFor(await eventsBetween(api, start, end), start, end);
+      // "Marcar mesmo assim" só vale com o "sim" do chefe a uma pergunta que citou o evento em conflito.
+      const accepted = args.ignore_conflicts === true && ctx.confirmed && conflicts.some((c) => plain(ctx.lastAssistant).includes(plain(c.title)));
+      if (conflicts.length && !accepted) {
+        return { status: "conflict", conflicts: conflicts.map(brief), instruction: "Avise o chefe do conflito em uma frase, citando o título do evento em conflito, e pergunte se marca mesmo assim. Só se ele disser sim, chame create_event de novo com ignore_conflicts=true." };
       }
       const body: Record<string, unknown> = {
         summary: String(args.title).trim(),
@@ -176,17 +219,20 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
       if (isStr(args.location)) body.location = args.location.trim();
       if (isStr(args.description)) body.description = args.description.trim();
       if (attendees.length) body.attendees = attendees.map((email) => ({ email }));
-      const created = normalizeEvent(await api.insert(body, { sendUpdates: attendees.length ? "all" : "none" }));
-      return { status: "created", id: created.id, title: created.title, when: created.spoken };
+      const created = tryNormalize(await api.insert(body, { sendUpdates: attendees.length ? "all" : "none" }));
+      return created ? { status: "created", id: created.id, title: created.title, when: created.spoken } : { status: "created", title: String(args.title).trim(), when: when(start, end) };
     }
 
     case "update_event": {
+      if (!ctx.writeIntent) return fail(NO_WRITE);
       if (!isStr(args.event_id)) return fail("event_id é obrigatório (use list_events para achar).");
       const fields = ["title", "start", "end", "duration_min", "location", "description"];
       if (!fields.some((f) => args[f] !== undefined)) return fail("Nada para mudar: informe title, start, end, duration_min, location ou description.");
       const raw = await api.get(args.event_id.trim());
       if (!raw) return fail("Evento não encontrado.");
-      const ev = normalizeEvent(raw);
+      const ev = tryNormalize(raw);
+      if (!ev) return fail("Esse evento não tem horário válido.");
+      if (ev.series) return fail(SERIES);
       const timeChange = args.start !== undefined || args.end !== undefined || args.duration_min !== undefined;
       if (timeChange && ev.allDay) return fail("Evento de dia inteiro: não dá para mudar o horário por aqui.");
 
@@ -206,15 +252,18 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
           newEnd = addMinutes(newStart, dur ?? original);
         }
         if (localToEpoch(newEnd) <= localToEpoch(newStart)) return fail("end precisa ser depois de start.");
-        if (args.ignore_conflicts !== true) {
-          const conflicts = conflictsFor((await eventsBetween(api, newStart, newEnd)).filter((e) => e.id !== ev.id), newStart, newEnd);
-          if (conflicts.length) {
-            return { status: "conflict", conflicts: conflicts.map(brief), instruction: "Avise o chefe do conflito e pergunte se remarca mesmo assim. Se ele confirmar, chame update_event de novo com ignore_conflicts=true." };
-          }
+        if (args.start !== undefined && localToEpoch(newStart) < localToEpoch(ctx.nowLocal) - PAST_MS) return fail(`start já passou (agora são ${ctx.nowLocal.replace("T", " ")}). Confira o dia.`);
+        const conflicts = conflictsFor((await eventsBetween(api, newStart, newEnd)).filter((e) => e.id !== ev.id), newStart, newEnd);
+        const accepted = args.ignore_conflicts === true && ctx.confirmed && conflicts.some((c) => plain(ctx.lastAssistant).includes(plain(c.title)));
+        if (conflicts.length && !accepted) {
+          return { status: "conflict", conflicts: conflicts.map(brief), instruction: "Avise o chefe do conflito, citando o título do evento em conflito, e pergunte se remarca mesmo assim. Só se ele disser sim, chame update_event de novo com ignore_conflicts=true." };
         }
       }
-      if (ev.hasOthers && !ctx.confirmed) {
-        return { status: "needs_confirmation", event: brief(ev), change: timeChange ? { new_when: when(newStart, newEnd) } : undefined, instruction: `${NEEDS_CONFIRMATION} O evento tem convidados, que serão avisados.` };
+      if (ev.hasOthers) {
+        if (!(ctx.confirmed && mentionsEvent(ctx.lastAssistant, ev))) {
+          return { status: "needs_confirmation", event: brief(ev), change: timeChange ? { new_when: when(newStart, newEnd) } : undefined, instruction: `${NEEDS_CONFIRMATION} O evento tem convidados, que serão avisados.` };
+        }
+        if (ctx.state.destructive > 0) return fail("Só uma ação destrutiva por vez; peça o resto em outra mensagem.");
       }
       const body: Record<string, unknown> = {};
       if (isStr(args.title)) body.summary = args.title.trim();
@@ -224,20 +273,26 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
         body.start = { dateTime: `${newStart.slice(0, 16)}:00`, timeZone: TZ };
         body.end = { dateTime: `${newEnd.slice(0, 16)}:00`, timeZone: TZ };
       }
-      const updated = normalizeEvent(await api.patch(ev.id, body, { sendUpdates: ev.hasOthers ? "all" : "none" }));
-      return { status: "updated", id: updated.id, title: updated.title, when: updated.spoken };
+      const updated = tryNormalize(await api.patch(ev.id, body, { sendUpdates: ev.hasOthers ? "all" : "none" }));
+      if (ev.hasOthers) ctx.state.destructive++;
+      return updated ? { status: "updated", id: updated.id, title: updated.title, when: updated.spoken } : { status: "updated", title: ev.title, when: when(newStart, newEnd) };
     }
 
     case "delete_event": {
+      if (!ctx.writeIntent) return fail(NO_WRITE);
       if (!isStr(args.event_id)) return fail("event_id é obrigatório (use list_events para achar).");
       const raw = await api.get(args.event_id.trim());
       if (!raw) return fail("Evento não encontrado.");
-      const ev = normalizeEvent(raw);
-      if (!ctx.confirmed) {
+      const ev = tryNormalize(raw);
+      if (!ev) return fail("Esse evento não tem horário válido.");
+      if (ev.series) return fail(SERIES);
+      if (!(ctx.confirmed && mentionsEvent(ctx.lastAssistant, ev))) {
         return { status: "needs_confirmation", event: brief(ev), instruction: `${NEEDS_CONFIRMATION}${ev.hasOthers ? " O evento tem convidados, que serão avisados do cancelamento." : ""}` };
       }
+      if (ctx.state.destructive > 0) return fail("Só uma ação destrutiva por vez; peça o resto em outra mensagem.");
       await api.remove(ev.id, { sendUpdates: ev.hasOthers ? "all" : "none" });
-      return { status: "deleted", title: ev.title, when: ev.spoken };
+      ctx.state.destructive++;
+      return { status: "deleted", title: ev.title, when: ev.spoken, ...(ev.recurring ? { note: "Foi só esta ocorrência do evento recorrente." } : {}) };
     }
   }
   return fail(`Ferramenta desconhecida: ${name}.`);
