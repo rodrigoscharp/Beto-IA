@@ -2,7 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
-import { EMOTION_TAG, parseEmotion, type Emotion } from "@/components/face";
+import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion } from "@/components/face";
+import { needsTools } from "@/lib/intent";
+import { ReplyStream, type StreamEvent } from "@/lib/replystream";
+import { SpeechQueue } from "@/lib/speechqueue";
+import type { QuotaInfo } from "@/lib/ops";
 import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
@@ -162,6 +166,9 @@ export default function JarvisPage() {
 
   const [orbState,     setOrbState]     = useState<OrbState>("wake");
   const [emotion,      setEmotion]      = useState<Emotion>("neutro");
+  const [typing,       setTyping]       = useState(false);   // caixa de texto aberta
+  const [typedText,    setTypedText]    = useState("");
+  const [voiceQuota,   setVoiceQuota]   = useState<QuotaInfo | null>(null);
   const [talking,      setTalking]      = useState(false);   // voz de fato tocando: a boca do rosto só mexe nesse intervalo
   const [caption,      setCaption]      = useState("");
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
@@ -177,6 +184,11 @@ export default function JarvisPage() {
   const deviceId       = useRef<string | null>(null);
   const audioRef       = useRef<HTMLAudioElement | null>(null);
   const audioUnlocked  = useRef(false);
+  const queueRef       = useRef<SpeechQueue | null>(null);                       // fala por frase em andamento
+  const typedTurn      = useRef(false);                                           // turno digitado: não reabre o microfone
+  const turnT0         = useRef<number | null>(null);                             // início do turno, para medir o tempo até o 1º áudio
+  const turnVia        = useRef<"stream" | "full" | "greeting">("full");
+  const quotaAt        = useRef(0);
   const timerInterval  = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerSecsLeft  = useRef(0);
   const timerLabel     = useRef("");
@@ -229,7 +241,8 @@ export default function JarvisPage() {
     startWake();
 
     const prefetch = setTimeout(prefetchGreetings, 3000);
-    return () => clearTimeout(prefetch);
+    const quota    = setTimeout(refreshQuota, 5000);
+    return () => { clearTimeout(prefetch); clearTimeout(quota); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -377,11 +390,36 @@ export default function JarvisPage() {
     } catch { /* sem cache: o Beto responde pelo caminho normal */ }
   }
 
+  /** Para qualquer voz em andamento: a fila por frase e o áudio atual. */
+  function killAudio() {
+    queueRef.current?.cancel();
+    queueRef.current = null;
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+  }
+
+  /** Primeiro áudio (ou primeira legenda) de uma resposta: manda o tempo desde o fim da fala do usuário. */
+  function firstSound() {
+    const t0 = turnT0.current;
+    if (t0 === null) return;
+    turnT0.current = null;
+    try {
+      const body = JSON.stringify({ evt: "ttfa", ms: performance.now() - t0, via: turnVia.current });
+      navigator.sendBeacon("/api/metrics", new Blob([body], { type: "application/json" }));
+    } catch { /* métrica é opcional */ }
+  }
+
+  /** Quanto da cota de voz resta (só mostra quando está acabando). No máximo 1 consulta por minuto. */
+  function refreshQuota() {
+    if (Date.now() - quotaAt.current < 60_000) return;
+    quotaAt.current = Date.now();
+    fetch("/api/tts/quota").then(r => r.json()).then((q: QuotaInfo) => setVoiceQuota(q)).catch(() => {});
+  }
+
   /** Toca uma frase pré-gerada na hora. Devolve false se ainda não está no cache (aí cai no TTS normal). */
   function speakCached(text: string, onDone: () => void, emotion: Emotion = "neutro"): boolean {
     const url = cachedAudio.current.get(text);
     if (!url || !audioUnlocked.current) return false;
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+    killAudio();
     window.speechSynthesis?.cancel();
     setMode("speaking");
     setEmotion(emotion);   // junto do setMode: nenhuma outra fala consegue trocar o rosto no meio do caminho
@@ -391,7 +429,7 @@ export default function JarvisPage() {
     const audio = new Audio(url);
     audioRef.current = audio;
     const finish = () => { audioRef.current = null; setTalking(false); setCaption(""); onDone(); };
-    audio.onplaying = () => setTalking(true);
+    audio.onplaying = () => { setTalking(true); firstSound(); };
     audio.onended = finish;
     audio.onerror = finish;
     audio.play().catch(finish);
@@ -422,7 +460,7 @@ export default function JarvisPage() {
     wakeRec.current = null;
     activeRec.current = null;
     window.speechSynthesis?.cancel();
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+    killAudio();
   }
 
   /* ── Countdown timer ─────────────────────────────────────────────────── */
@@ -472,7 +510,7 @@ export default function JarvisPage() {
   /* ── TTS: ElevenLabs with MediaSource streaming, synth fallback ──────── */
 
   function speak(text: string, onDone: () => void, emotion: Emotion = "neutro") {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+    killAudio();
     window.speechSynthesis?.cancel();
     // Nada para falar (ex.: a resposta veio só com a tag de emoção): segue o fluxo sem ficar mudo em "speaking".
     if (!text.trim()) { onDone(); return; }
@@ -485,7 +523,7 @@ export default function JarvisPage() {
 
     // Sem a voz da ElevenLabs (cota acabou, chave recusada) o Beto NÃO troca por outra voz: o texto fica na tela
     // pelo tempo de ler e a conversa segue. O motivo fica nos logs da rota /api/tts.
-    const silent = () => { setTimeout(done, Math.min(8000, 1500 + text.length * 55)); };
+    const silent = () => { firstSound(); setTimeout(done, Math.min(8000, 1500 + text.length * 55)); };
 
     fetch("/api/tts", {
       method:  "POST",
@@ -506,7 +544,7 @@ export default function JarvisPage() {
           audioRef.current = audio;
 
           const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
-          audio.onplaying = () => setTalking(true);
+          audio.onplaying = () => { setTalking(true); firstSound(); };
           audio.onended = cleanup;
           audio.onerror = cleanup;
 
@@ -552,7 +590,7 @@ export default function JarvisPage() {
               const audio = new Audio(url);
               audioRef.current  = audio;
               const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
-              audio.onplaying = () => setTalking(true);
+              audio.onplaying = () => { setTalking(true); firstSound(); };
               audio.onended = cleanup;
               audio.onerror = cleanup;
               audio.play().catch(done);
@@ -943,16 +981,21 @@ export default function JarvisPage() {
      Main chat dispatcher
   ══════════════════════════════════════════════════════════════════════ */
 
-  async function sendToJarvis(text: string) {
+  async function sendToJarvis(text: string, opts: { typed?: boolean } = {}) {
+    typedTurn.current = !!opts.typed;
+    turnT0.current    = performance.now();
+    turnVia.current   = "full";
+
     // Saudação pura: responde direto, sem "deixa eu pensar" e sem esperar o modelo.
     const greeting = greetingKind(text);
     if (greeting) {
+      turnVia.current = "greeting";
       const options = GREETINGS[greeting];
       const reply   = options[Math.floor(Math.random() * options.length)]!;
       // Saudação não passa pelo modelo, então não tem tag: o rosto é alegre e o histórico leva a tag para o modelo ver o formato.
       history.current = [...history.current, { role: "user", content: text }, { role: "assistant", content: `[emo:alegre] ${reply}` }];
       const after = () => {
-        if (!musicPlaying.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
+        if (!musicPlaying.current && !typedTurn.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
         else { setMode("wake"); setTimeout(startWake, 300); }
       };
       if (!speakCached(reply, after, "alegre")) speak(reply, after, "alegre");
@@ -964,16 +1007,29 @@ export default function JarvisPage() {
     history.current   = msgs;
 
     try {
-      const res  = await fetch("/api/chat", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ messages: msgs.slice(-20) }),
-      });
-      if (res.status === 401) { window.location.href = "/login"; return; } // sessão expirou: volta ao login em vez de falhar calado
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      // Conversa simples: a voz começa na primeira frase, sem esperar a resposta inteira. Pedido de ação, registro ou
+      // qualquer dúvida segue o caminho completo abaixo (que sabe executar as tags).
+      let held: string | null = null;
+      if (!needsTools(msgs.slice(-20))) {
+        const r = await streamReply(msgs);
+        if (r.done) return;
+        held = r.full;
+      }
 
-      let rawReply = data.reply as string;
+      let rawReply: string;
+      if (held !== null) {
+        rawReply = held;
+      } else {
+        const res  = await fetch("/api/chat", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ messages: msgs.slice(-20) }),
+        });
+        if (res.status === 401) { window.location.href = "/login"; return; } // sessão expirou: volta ao login em vez de falhar calado
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        rawReply = data.reply as string;
+      }
 
       // Disse que registrou mas não mandou a tag: nada foi gravado. Pede ao modelo para corrigir uma vez.
       if (CLAIMS_WRITE.test(rawReply) && !HAS_TAG.test(rawReply) && REGISTER_INTENT.test(text)) {
@@ -1000,11 +1056,12 @@ export default function JarvisPage() {
       // (com música tocando o microfone aberto captaria a letra como se fosse você).
       const say  = async (t: string, followUp = false, emotion: Emotion = emo.emotion) => {
         speak(sanitize(t), () => {
-          if (followUp && !musicPlaying.current && getSR()) {
+          if (followUp && !musicPlaying.current && !typedTurn.current && getSR()) {
             setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
           } else {
             setMode("wake"); setTimeout(startWake, 300);
           }
+          refreshQuota();
         }, emotion);
       };
 
@@ -1045,6 +1102,114 @@ export default function JarvisPage() {
     }
   }
 
+  /** Lê a resposta em streaming e fala frase por frase. `done`: o turno inteiro foi tratado aqui.
+      Se não foi (erro antes do texto, resposta só com tag, ou tag de ação), devolve `full` com o texto cru
+      (ou null para refazer a chamada) e o caminho completo assume. */
+  async function streamReply(msgs: Msg[]): Promise<{ done: boolean; full: string | null }> {
+    let res: Response;
+    try {
+      res = await fetch("/api/chat", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ messages: msgs.slice(-20), stream: true }),
+      });
+    } catch { return { done: false, full: null }; }
+    if (res.status === 401) { window.location.href = "/login"; return { done: true, full: null }; }
+    if (!res.ok || !res.body) return { done: false, full: null };
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    const rs      = new ReplyStream();
+    let queue: SpeechQueue | null = null;
+    let emotionNow: Emotion = "neutro";
+    let emotionSet = false;
+
+    const ensureQueue = (): SpeechQueue => {
+      if (queue) return queue;
+      killAudio();
+      turnVia.current = "stream";
+      setMode("speaking");
+      setEmotion(emotionNow);
+      setTalking(false);
+      queue = new SpeechQueue({
+        fetchAudio: async (t, first) => {
+          try {
+            const r = await fetch("/api/tts", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body:    JSON.stringify(first ? { text: t, lead: true } : { text: t }),
+            });
+            return r.ok ? URL.createObjectURL(await r.blob()) : null;
+          } catch { return null; }
+        },
+        play: (url, hooks) => {
+          const audio = new Audio(url);
+          audioRef.current = audio;
+          let finish: () => void = () => {};
+          const done = new Promise<void>((r) => { finish = r; });
+          audio.onplaying = () => { setTalking(true); hooks.onPlaying(); };
+          audio.onended = () => finish();
+          audio.onerror = () => finish();
+          audio.play().catch(() => finish());
+          return { done, stop: () => { audio.pause(); audio.src = ""; finish(); } };
+        },
+        showText:  (t) => { setCaption(t); },
+        readingMs: (t) => Math.min(8000, 1500 + t.length * 55),
+        sleep:     (ms) => new Promise<void>((r) => setTimeout(r, ms)),
+        onFirstSound: firstSound,
+        revoke:    (u) => URL.revokeObjectURL(u),
+      });
+      queueRef.current = queue;
+      return queue;
+    };
+
+    let held = false;
+    const handle = (events: StreamEvent[]) => {
+      for (const e of events) {
+        if (e.type === "tag") {
+          const em = emotionFromName(e.name);
+          if (em && !emotionSet && !queue) { emotionNow = em; emotionSet = true; }
+        } else if (e.type === "sentence") {
+          const t = sanitize(e.text);
+          if (t) ensureQueue().push(t);
+        } else {
+          held = true;
+        }
+      }
+    };
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        handle(rs.push(decoder.decode(value, { stream: true })));
+      }
+      handle(rs.push(decoder.decode()));
+    } catch { /* corte no meio: fala o que já chegou */ }
+    const end = rs.finish();
+    handle(end.events);
+
+    // Sem nada para falar (erro antes do texto, ou só a tag) ou com tag de ação: o caminho completo cuida.
+    if (!queue || held) {
+      if (queue) { /* tag tardia: a fala já começada termina; o caminho completo só executa a ação */ }
+      return { done: false, full: end.full || null };
+    }
+
+    const q: SpeechQueue = queue;
+    const spoken = parseEmotion(end.full);
+    // O histórico guarda a tag: ver o formato nas respostas anteriores ajuda o modelo a não esquecer dela.
+    history.current = [...msgs, { role: "assistant", content: `[emo:${emotionNow}] ${spoken.text}` }];
+    await q.end();
+    if (queueRef.current !== q || q.isCancelled()) return { done: true, full: null };   // interrompido pelo usuário
+    queueRef.current = null;
+    setCaption("");
+    setTalking(false);
+    if (!musicPlaying.current && !typedTurn.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
+    else { setMode("wake"); setTimeout(startWake, 300); }
+    refreshQuota();
+    return { done: true, full: null };
+  }
+
   /** Devolve ao modelo o erro do My Hub e retorna a frase que ele fala (uma pergunta curta). */
   async function askAboutFailure(msgs: Msg[], said: string, erro: string): Promise<{ text: string; emotion: Emotion }> {
     const fallback = `Chefe, não consegui registrar: ${erro.replace(/\s*Pergunte[^.]*\.?/i, "").trim()}`;
@@ -1071,13 +1236,26 @@ export default function JarvisPage() {
 
   /* ── Click / tap handler ─────────────────────────────────────────────── */
 
+  /** Fala digitada: mesmo caminho da voz, mas o Beto não reabre o microfone depois de responder. */
+  function submitTyped(e: React.FormEvent) {
+    e.preventDefault();
+    const t = typedText.trim();
+    if (!t) return;
+    setTypedText("");
+    setTyping(false);
+    if (mode.current === "thinking") return;   // já está respondendo: ignora em vez de embaralhar dois turnos
+    stopAll();                                 // para o ouvinte do wake word e qualquer fala em andamento
+    setCaption("");
+    void sendToJarvis(t, { typed: true });
+  }
+
   function handleClick() {
     const m = mode.current;
     if (m === "thinking") return;
 
     if (m === "speaking") {
       window.speechSynthesis?.cancel();
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+      killAudio();
       setCaption("");
       setMode("wake");
       startWake();
@@ -1230,6 +1408,76 @@ export default function JarvisPage() {
           <div style={{ fontSize: 22, fontFamily: "monospace", fontWeight: 300, letterSpacing: "0.06em", color: "rgba(var(--fg-rgb),0.75)" }}>
             {formatTime(timerDisplay.timeLeft)}
           </div>
+        </div>
+      )}
+
+      {/* Digitar para o Beto — bottom left */}
+      {!typing && (
+        <button
+          className="beto-chrome"
+          onClick={() => setTyping(true)}
+          title="Digitar em vez de falar"
+          aria-label="Digitar para o Beto"
+          style={{
+            position: "fixed", bottom: 18, left: 22, zIndex: 10,
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "rgba(var(--fg-rgb),0.14)",
+            fontSize: 10, fontFamily: "monospace",
+            letterSpacing: "0.15em", textTransform: "uppercase",
+          }}
+        >
+          digitar
+        </button>
+      )}
+      {typing && (
+        <form
+          onSubmit={submitTyped}
+          className="beto-chrome"
+          style={{
+            position: "fixed", bottom: 12, left: "50%", transform: "translateX(-50%)", zIndex: 11,
+            width: "min(560px, 92vw)", display: "flex", gap: 8,
+          }}
+        >
+          <input
+            autoFocus
+            value={typedText}
+            onChange={(e) => setTypedText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setTyping(false); setTypedText(""); } }}
+            onBlur={() => { if (!typedText.trim()) setTyping(false); }}
+            placeholder="Digite para o Beto e tecle Enter"
+            aria-label="Mensagem para o Beto"
+            style={{
+              flex: 1, padding: "10px 14px", borderRadius: 8,
+              background: "rgba(var(--bg-rgb),0.7)", backdropFilter: "blur(8px)",
+              color: "rgb(var(--fg-rgb))", border: "1px solid rgba(var(--fg-rgb),0.18)",
+              fontSize: 16, fontFamily: "'Segoe UI', system-ui, sans-serif", outline: "none",
+            }}
+          />
+          <button
+            type="submit"
+            style={{
+              padding: "0 14px", borderRadius: 8, cursor: "pointer",
+              background: "rgba(var(--accent-rgb),0.25)", color: "rgb(var(--fg-rgb))",
+              border: "1px solid rgba(var(--accent-rgb),0.45)", fontSize: 14,
+            }}
+          >
+            enviar
+          </button>
+        </form>
+      )}
+
+      {/* Cota da voz — bottom right, só quando está acabando */}
+      {voiceQuota && (voiceQuota.level === "low" || voiceQuota.level === "empty") && (
+        <div
+          className="beto-chrome"
+          title="Cota mensal da voz (ElevenLabs)"
+          style={{
+            position: "fixed", bottom: 18, right: 22, zIndex: 10, pointerEvents: "none",
+            color: voiceQuota.level === "empty" ? "rgba(255,120,110,0.75)" : "rgba(255,200,110,0.65)",
+            fontSize: 10, fontFamily: "monospace", letterSpacing: "0.12em", textTransform: "uppercase",
+          }}
+        >
+          {voiceQuota.level === "empty" ? "voz esgotada" : `voz: ${voiceQuota.remainingPct}%`}
         </div>
       )}
 

@@ -1,0 +1,18 @@
+# Confere 1x por dia se os modelos da Groq que o Beto usa ainda existem.
+# Usa o mesmo CRON_SECRET do workflow de avisos. O resultado aparece nos logs da Vercel ("[beto-models]").
+name: Beto models check
+
+on:
+  schedule:
+    - cron: "17 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /api/cron/models
+        run: |
+          curl -fsS -m 60 -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://betoia.vercel.app/api/cron/models

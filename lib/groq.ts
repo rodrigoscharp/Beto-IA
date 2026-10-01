@@ -1,9 +1,10 @@
 import Groq from "groq-sdk";
+import { ThinkFilter } from "./thinkfilter";
 
 /* Groq retira modelos e cada conta enxerga um conjunto diferente.
    Tenta os preferidos em ordem (o primeiro que funcionar fica em cache) e
    só consulta a lista de modelos se todos falharem. */
-const PREFERRED = [
+export const PREFERRED = [
   process.env.GROQ_MODEL,
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
@@ -21,6 +22,12 @@ let working: string | null = null;
 export const workingModel = () => working;
 
 const cooldown = new Map<string, number>(); // model -> timestamp até quando pular
+/* Modelo que respondeu 404/"não existe": não adianta tentar de novo a cada pergunta (cada tentativa é uma ida e volta
+   perdida). Esquecido depois de 6 h, caso a Groq volte a oferecer. Vale por instância da função. */
+const DEAD_MS = 6 * 60 * 60 * 1000;
+const dead = new Map<string, number>();
+const isDead = (model: string) => (dead.get(model) ?? 0) > Date.now();
+export const deadModels = () => Array.from(dead.keys()).filter(isDead);
 
 const isModelError = (e: unknown) => {
   const err = e as { status?: number; message?: string };
@@ -42,10 +49,25 @@ const isFatalError = (e: unknown) => {
   return err?.status === 401 || err?.status === 403 || /invalid.api.key|unauthorized/i.test(err?.message ?? "");
 };
 
+// Modelos de raciocínio (gpt-oss) pensam por vários segundos por padrão; "low" mantém a resposta rápida.
+const fastFor = (model: string) => (/^openai\/gpt-oss/.test(model) ? { reasoning_effort: "low" } : {});
+
+const newClient = (apiKey: string) =>
+  // Sem retries longos do SDK: se um modelo engasgar (429/5xx/timeout), passa pro próximo na hora.
+  // GROQ_BASE_URL só existe para testar com um servidor falso.
+  new Groq({ apiKey, maxRetries: 0, timeout: 12_000, baseURL: process.env.GROQ_BASE_URL || undefined });
+
+/** Registra por que um modelo falhou (cooldown ou "morto"). Devolve true se o erro é fatal (chave inválida). */
+function noteFailure(model: string, e: unknown): boolean {
+  if (isFatalError(e)) return true; // chave inválida etc.: os outros 6 modelos vão falhar igual
+  if (isModelError(e)) dead.set(model, Date.now() + DEAD_MS);
+  else cooldown.set(model, Date.now() + 20_000);
+  if (working === model) working = null;
+  return false;
+}
+
 async function attempt(groq: Groq, params: ChatParams, model: string) {
-  // Modelos de raciocínio (gpt-oss) pensam por vários segundos por padrão; "low" mantém a resposta rápida.
-  const fast = /^openai\/gpt-oss/.test(model) ? { reasoning_effort: "low" } : {};
-  const res = await groq.chat.completions.create({ ...params, ...fast, model, stream: false } as never) as Groq.Chat.ChatCompletion;
+  const res = await groq.chat.completions.create({ ...params, ...fastFor(model), model, stream: false } as never) as Groq.Chat.ChatCompletion;
   working = model;
   return (res.choices[0]?.message?.content ?? "")
     .replace(/<think>[\s\S]*?<\/think>/g, "")
@@ -53,22 +75,19 @@ async function attempt(groq: Groq, params: ChatParams, model: string) {
 }
 
 export async function groqChat(apiKey: string, params: ChatParams): Promise<string> {
-  // Sem retries longos do SDK: se um modelo engasgar (429/5xx/timeout), passa pro próximo na hora.
-  const groq = new Groq({ apiKey, maxRetries: 0, timeout: 12_000 });
+  const groq = newClient(apiKey);
   const tried = new Set<string>();
   let lastError: unknown;
 
   const run = async (models: string[], ignoreCooldown = false) => {
     for (const model of models) {
-      if (tried.has(model) || (!ignoreCooldown && (cooldown.get(model) ?? 0) > Date.now())) continue;
+      if (tried.has(model) || (!ignoreCooldown && ((cooldown.get(model) ?? 0) > Date.now() || isDead(model)))) continue;
       tried.add(model);
       try {
         return await attempt(groq, params, model);
       } catch (e) {
         lastError = e;
-        if (isFatalError(e)) throw e; // chave inválida etc.: os outros 6 modelos vão falhar igual
-        if (!isModelError(e)) cooldown.set(model, Date.now() + 20_000); // não existe pra essa conta: sem cooldown, tenta de novo já
-        if (working === model) working = null;
+        if (noteFailure(model, e)) throw e;
       }
     }
     return null;
@@ -90,4 +109,49 @@ export async function groqChat(apiKey: string, params: ChatParams): Promise<stri
     lastError = e;
   }
   throw lastError;
+}
+
+
+/* Streaming: devolve a resposta em pedaços de texto, com a mesma lista e a mesma troca de modelo. Só troca de
+   modelo ENQUANTO nenhum texto saiu (depois do primeiro pedaço o ouvinte já começou a receber). Erro depois
+   disso é repassado a quem consome. */
+export async function* groqChatStream(apiKey: string, params: ChatParams): AsyncGenerator<string, void, void> {
+  const groq = newClient(apiKey);
+  const order = [working, ...PREFERRED].filter(Boolean) as string[];
+  const seen = new Set<string>();
+  let lastError: unknown;
+
+  for (const model of order) {
+    if (seen.has(model) || (cooldown.get(model) ?? 0) > Date.now() || isDead(model)) continue;
+    seen.add(model);
+    let started = false;
+    try {
+      type Delta = AsyncIterable<{ choices?: { delta?: { content?: string | null } }[] }>;
+      const stream = (await groq.chat.completions.create({ ...params, ...fastFor(model), model, stream: true } as never)) as unknown as Delta;
+      const filter = new ThinkFilter();
+      let leading = true;   // o texto final começa sem espaço/linha em branco (como o .trim() do caminho sem stream)
+      const emit = (piece: string) => {
+        if (leading) { piece = piece.trimStart(); if (!piece) return ""; leading = false; }
+        return piece;
+      };
+      for await (const chunk of stream) {
+        const raw = chunk.choices?.[0]?.delta?.content;
+        if (!raw) continue;
+        const piece = emit(filter.push(raw));
+        if (!piece) continue;
+        if (!started) { started = true; working = model; }
+        yield piece;
+      }
+      const tail = emit(filter.flush());
+      if (tail) { if (!started) { started = true; working = model; } yield tail; }
+      if (started) return;
+      lastError = new Error(`O modelo ${model} não devolveu texto.`);
+      cooldown.set(model, Date.now() + 20_000);
+    } catch (e) {
+      if (started) throw e;
+      lastError = e;
+      if (noteFailure(model, e)) throw e;
+    }
+  }
+  throw lastError ?? new Error("Nenhum modelo respondeu.");
 }

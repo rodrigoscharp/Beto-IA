@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 const VOICE_ID = "pNInz6obpgDQGcFmaJgB"; // Adam — grave, imponente
 
 // Velocidade da fala (0.7 a 1.2). ELEVENLABS_SPEED na Vercel ajusta sem mexer no código.
+// ELEVENLABS_BASE_URL só existe para testar com um servidor falso.
+const ELEVEN_BASE = process.env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io";
+
 const SPEED = Math.min(1.2, Math.max(0.7, Number(process.env.ELEVENLABS_SPEED) || 0.9));
 
 export async function POST(req: NextRequest) {
@@ -21,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream`,
+      `${ELEVEN_BASE}/v1/text-to-speech/${VOICE_ID}/stream`,
       {
         method: "POST",
         headers: {

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   EMOTIONS, EXPRESSIONS, STATE_FACES, FACE_POINTS, FACE_LAYOUT,
-  faceFor, faceTargets, lerpFace, applyLife, clusterOf, parseEmotion, EMOTION_TAG,
+  faceFor, faceTargets, lerpFace, applyLife, clusterOf, parseEmotion, EMOTION_TAG, emotionFromName,
 } from "../components/face.ts";
 
 const allFaces = [
@@ -190,4 +190,11 @@ test("parseEmotion: tag malformada também sai do texto e cai em neutro", () => 
   assert.deepEqual(r, { emotion: "neutro", text: "Fechou, chefe." });
   assert.equal(parseEmotion("[emoção:alegre] oi").emotion, "alegre");
   assert.equal(parseEmotion("[emoção:alegre] oi").text, "oi");
+});
+
+test("emotionFromName: nome válido (qualquer caixa/acento) vira emoção; inválido vira null", () => {
+  assert.equal(emotionFromName("alegre"), "alegre");
+  assert.equal(emotionFromName(" SARCÁSTICO "), "sarcastico");
+  assert.equal(emotionFromName("feliz"), null);
+  assert.equal(emotionFromName(""), null);
 });
