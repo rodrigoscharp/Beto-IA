@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --test scripts/*.test.mjs",
+    "test": "node --import ./scripts/register-ts.mjs --test scripts/*.test.mjs",
     "test:face": "node --test scripts/face.test.mjs",
     "icons": "node scripts/gen-icons.mjs"
   },

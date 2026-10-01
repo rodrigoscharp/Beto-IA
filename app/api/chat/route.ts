@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { groqChat, groqChatStream, workingModel } from "@/lib/groq";
+import { groqChat, groqChatStream, groqComplete, workingModel } from "@/lib/groq";
 import { listMemories } from "@/lib/supabase";
 import { getMyHubContext, myHubPromptBlock, type MyHubContext } from "@/lib/myhub";
 import { getBrasiliaTime } from "@/lib/time";
-import { needsTools } from "@/lib/intent";
+import { needsTools, userConfirmed, wantsCalendar } from "@/lib/intent";
+import { runToolLoop, type LoopMsg } from "@/lib/toolloop";
+import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/calendar";
+import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
+import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 
 type Memories = { content: string; category: string }[];
@@ -14,12 +18,42 @@ function logMetric(data: Record<string, unknown>) {
   console.log("[beto-metrics]", JSON.stringify({ evt: "chat", ...data }));
 }
 
-function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null) {
+function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, calendar = false) {
   const t = getBrasiliaTime();
   return buildSystemPrompt(
-    { memories, myhubBlock: myHubPromptBlock(myhub, t.date), date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period },
+    { memories, myhubBlock: myHubPromptBlock(myhub, t.date), date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar },
     mode,
   );
+}
+
+/* Turno com as ferramentas de agenda: o modelo pode pedir ferramentas (ver, criar, remarcar, cancelar, achar horário),
+   o servidor executa no Google Calendar e devolve o resultado, até o modelo responder em texto. Cancelar e remarcar com
+   convidados só executam se o chefe acabou de confirmar (userConfirmed): quem decide é o servidor, não o modelo. */
+async function replyWithCalendar(req: NextRequest, apiKey: string, messages: Msg[], memories: Memories) {
+  const [myhub, token] = await Promise.all([getMyHubContext(), getGoogleToken(req)]);
+  const t = getBrasiliaTime();
+  const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+  const ctx: ToolCtx = { api: token ? googleCalendarApi(token) : null, nowLocal: `${t.date}T${t.time}`, confirmed: userConfirmed(messages), userText };
+  let needsLogin = false;
+  const result = await runToolLoop({
+    messages: [{ role: "system", content: promptFor("full", memories, myhub, true) }, ...messages] as LoopMsg[],
+    complete: async (msgs) => {
+      const c = await groqComplete(apiKey, { messages: msgs, tools: CALENDAR_TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 700 } as never);
+      return { content: c.content, toolCalls: c.toolCalls };
+    },
+    execute: async (name, args) => {
+      try {
+        const r = await executeCalendarTool(name, args, ctx);
+        if ((r as { needsLogin?: boolean })?.needsLogin) needsLogin = true;
+        return r;
+      } catch (e) {
+        if (e instanceof GoogleApiError && e.status === 401) { needsLogin = true; return { needsLogin: true, error: "A sessão do Google expirou." }; }
+        throw e;
+      }
+    },
+  });
+  const text = result.text || (result.hitLimit ? "Não consegui concluir isso na agenda agora, chefe." : "");
+  return { text, needsLogin, steps: result.steps, tools: result.calls.map((c) => (c.ok ? c.name : `${c.name}:erro`)) };
 }
 
 // Cache memórias por 5 min para não bater no Supabase a cada mensagem
@@ -133,16 +167,33 @@ export async function POST(req: NextRequest) {
       temperature: 0.7,
       max_tokens: 700,
     });
-    let reply = await run(mode, myhub);
+    let reply: string;
     let usedMode = mode;
     let retried = false;
-    if (mode === "chat" && detectNeedTools(reply) === "yes") {
-      retried = true;
-      usedMode = "full";
-      reply = await run("full", await getMyHubContext());
+    let needsGoogleLogin = false;
+    let tools: string[] = [];
+    let steps = 1;
+    const viaCalendar = async () => {
+      const r = await replyWithCalendar(req, apiKey, messages, memories);
+      needsGoogleLogin = r.needsLogin;
+      tools = r.tools;
+      steps = r.steps;
+      return r.text;
+    };
+    // Agenda (ou a escalada do cliente com `full`): o prompt completo vai junto com as ferramentas do Calendar.
+    if (mode === "full" && (forceFull === true || wantsCalendar(messages))) {
+      reply = await viaCalendar();
+    } else {
+      reply = await run(mode, myhub);
+      // O modelo sem as ferramentas pediu [NEEDTOOLS] (conversa -> completo, ou completo sem agenda -> com agenda).
+      if (detectNeedTools(reply) === "yes") {
+        retried = true;
+        usedMode = "full";
+        reply = await viaCalendar();
+      }
     }
-    logMetric({ mode: usedMode, stream: false, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried });
-    return NextResponse.json({ reply }, { headers: { "x-beto-model": workingModel() ?? "" } });
+    logMetric({ mode: usedMode, stream: false, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
+    return NextResponse.json({ reply, ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}) }, { headers: { "x-beto-model": workingModel() ?? "" } });
   } catch (error: unknown) {
     console.error("[Beto API] Erro:", error);
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

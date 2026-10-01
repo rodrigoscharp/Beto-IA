@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsTools } from "../lib/intent.ts";
+import { needsTools, userConfirmed, wantsCalendar } from "../lib/intent.ts";
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -94,4 +94,58 @@ test("oferta do Beto com a pergunta no meio da fala: resposta afirmativa curta v
 test("pergunta qualquer do Beto seguida de resposta curta que não é sim/não continua em conversa", () => {
   const q = a("[emo:neutro] Tudo certo por aqui. E você, como tá?");
   assert.equal(needsTools([q, u("tô cansado mas indo bem")]), false);
+});
+
+const ask = (t) => a(`[emo:neutro] ${t}`);
+
+test("userConfirmed: 'sim' depois de uma pergunta de cancelar/remarcar confirma", () => {
+  const q = ask("Cancelo a reunião com o João amanhã às 15h?");
+  for (const t of ["sim", "Sim.", "pode cancelar", "pode sim", "confirma", "isso mesmo", "claro", "beleza, pode"]) {
+    assert.equal(userConfirmed([q, u(t)]), true, t);
+  }
+});
+
+test("userConfirmed: negativa, pedido novo ou frase longa não confirmam", () => {
+  const q = ask("Cancelo a reunião com o João amanhã às 15h?");
+  for (const t of ["não", "não, deixa", "sim mas muda pra quinta", "cancela a reunião de amanhã", "apaga tudo", "sim eu quero que você cancele todas as reuniões da semana"]) {
+    assert.equal(userConfirmed([q, u(t)]), false, t);
+  }
+});
+
+test("userConfirmed: sem pergunta de confirmação antes, 'sim' não confirma nada", () => {
+  assert.equal(userConfirmed([u("sim")]), false);
+  assert.equal(userConfirmed([ask("E você, como tá?"), u("sim")]), false);
+  assert.equal(userConfirmed([ask("Quer o briefing?"), u("sim")]), false);
+  assert.equal(userConfirmed([ask("Cancelo a reunião."), u("sim")]), false, "sem pergunta");
+  assert.equal(userConfirmed([]), false);
+});
+
+test("userConfirmed: usa a ÚLTIMA fala do usuário e a fala do Beto logo antes dela", () => {
+  const q = ask("Posso remarcar o almoço para quinta às 12h?");
+  assert.equal(userConfirmed([u("remarca o almoço"), q, u("pode")]), true);
+  assert.equal(userConfirmed([q, u("pode"), ask("Pronto, remarquei."), u("valeu")]), false);
+});
+
+test("wantsCalendar: pedidos de agenda sim, conversa comum não", () => {
+  for (const t of ["o que tenho na agenda amanhã", "marca uma reunião com a Maria sexta às 15h", "cancela minha reunião de hoje",
+    "remarca o almoço pra quinta", "acha um horário livre amanhã", "tenho algum compromisso na segunda", "qual meu próximo evento",
+    "estou livre na terça à tarde", "agenda um café com o João"]) {
+    assert.equal(wantsCalendar([u(t)]), true, t);
+  }
+  for (const t of ["como você está hoje", "me explica o que é latência", "toca uma música do Queen"]) {
+    assert.equal(wantsCalendar([u(t)]), false, t);
+  }
+});
+
+test("wantsCalendar: resposta curta a uma pergunta de agenda do Beto continua no Calendar", () => {
+  assert.equal(wantsCalendar([ask("Cancelo a reunião com o João amanhã às 15h?"), u("sim")]), true);
+  assert.equal(wantsCalendar([ask("Tem conflito com o almoço. Marco mesmo assim?"), u("pode marcar")]), true);
+  assert.equal(wantsCalendar([ask("E você, como tá?"), u("sim")]), false);
+});
+
+test("pedidos de agenda nunca vão pelo streaming de conversa (needsTools)", () => {
+  for (const t of ["estou livre amanhã à tarde por acaso", "tenho algum compromisso na segunda de manhã", "qual meu próximo evento marcado"]) {
+    assert.equal(needsTools([u(t)]), true, t);
+  }
+  assert.equal(needsTools([ask("Cancelo a reunião com o João amanhã às 15h?"), u("pode sim")]), true);
 });

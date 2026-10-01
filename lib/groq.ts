@@ -75,43 +75,68 @@ async function attempt(groq: Groq, params: ChatParams, model: string) {
     .trim();
 }
 
-export async function groqChat(apiKey: string, params: ChatParams): Promise<string> {
+/** Percorre a lista de modelos (o que funcionou por último primeiro) até um responder. Mesma regra para texto e ferramentas. */
+async function withModels<T>(apiKey: string, call: (groq: Groq, model: string) => Promise<T>): Promise<T> {
   const groq = newClient(apiKey);
   const tried = new Set<string>();
   let lastError: unknown;
+  const FAILED = Symbol("failed");
 
-  const run = async (models: string[], ignoreCooldown = false) => {
+  const run = async (models: string[], ignoreCooldown = false): Promise<T | typeof FAILED> => {
     for (const model of models) {
       if (tried.has(model) || (!ignoreCooldown && ((cooldown.get(model) ?? 0) > Date.now() || isDead(model)))) continue;
       tried.add(model);
       try {
-        return await attempt(groq, params, model);
+        return await call(groq, model);
       } catch (e) {
         lastError = e;
         if (noteFailure(model, e)) throw e;
       }
     }
-    return null;
+    return FAILED;
   };
 
   const order = [working, ...PREFERRED].filter(Boolean) as string[];
   const first = await run(order);
-  if (first !== null) return first;
+  if (first !== FAILED) return first;
   // Todos em cooldown por limite de uso: tenta de novo mesmo assim, o limite pode já ter liberado.
   tried.clear();
   const again = await run(order, true);
-  if (again !== null) return again;
+  if (again !== FAILED) return again;
 
   try {
     const ids = (await groq.models.list()).data.map((m) => m.id).filter((m) => !NOT_CHAT.test(m));
     const extra = await run(ids);
-    if (extra !== null) return extra;
+    if (extra !== FAILED) return extra;
   } catch (e) {
     lastError = e;
   }
   throw lastError;
 }
 
+export async function groqChat(apiKey: string, params: ChatParams): Promise<string> {
+  return withModels(apiKey, (groq, model) => attempt(groq, params, model));
+}
+
+/* Chamada com ferramentas: devolve o texto e/ou as ferramentas que o modelo pediu. Resposta totalmente vazia conta
+   como falha do modelo (passa ao próximo). Chamada de ferramenta malformada (400) também cai no próximo. */
+export interface CompleteResult {
+  content: string;
+  toolCalls: { id: string; name: string; arguments: string }[];
+  model: string;
+}
+
+export async function groqComplete(apiKey: string, params: ChatParams): Promise<CompleteResult> {
+  return withModels(apiKey, async (groq, model) => {
+    const res = await groq.chat.completions.create({ ...params, ...fastFor(model), model, stream: false } as never) as Groq.Chat.ChatCompletion;
+    const msg = res.choices[0]?.message;
+    const content = (msg?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const toolCalls = (msg?.tool_calls ?? []).map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments ?? "" }));
+    if (!content && toolCalls.length === 0) throw new Error(`O modelo ${model} não devolveu nada.`);
+    working = model;
+    return { content, toolCalls, model };
+  });
+}
 
 /* Streaming: devolve a resposta em pedaços de texto, com a mesma lista e a mesma troca de modelo. Só troca de
    modelo ENQUANTO nenhum texto de verdade saiu (tag de emoção sozinha não conta, ver HeadGate); depois do primeiro

@@ -11,11 +11,24 @@ const full = buildSystemPrompt(input, "full");
 const chat = buildSystemPrompt(input, "chat");
 
 test("modo completo traz todas as integrações e o contexto do My Hub", () => {
-  for (const block of ["━━━ SPOTIFY ━━━", "━━━ GOOGLE CALENDAR ━━━", "━━━ GITHUB ━━━", "━━━ TIMER / POMODORO ━━━",
+  for (const block of ["━━━ SPOTIFY ━━━", "━━━ GITHUB ━━━", "━━━ TIMER / POMODORO ━━━",
     "━━━ GMAIL ━━━", "━━━ BRIEFING ━━━", "━━━ MEMÓRIA ━━━", "REGRA DE TAGS", "MYHUB-CTX"]) {
     assert.ok(full.includes(block), block);
   }
-  assert.ok(full.includes("Hoje é 2026-10-01 (Brasília)"));
+});
+
+test("agenda não usa mais tag: o bloco [CALENDAR:…] saiu e a agenda é por ferramentas", () => {
+  for (const p of [full, chat, buildSystemPrompt({ ...input, calendar: true }, "full")]) assert.ok(!p.includes('[CALENDAR:{'), "nenhum exemplo da tag antiga");
+  assert.ok(!full.includes("list_events"), "sem a flag, o guia das ferramentas não entra");
+  assert.ok(full.includes("NEEDTOOLS"), "o modo completo sem ferramentas de agenda manda escalar");
+});
+
+test("com calendar: o guia das ferramentas entra, com data de hoje, confirmação e regra de voz", () => {
+  const p = buildSystemPrompt({ ...input, calendar: true }, "full");
+  for (const k of ["list_events", "find_free_slots", "create_event", "update_event", "delete_event", "needs_confirmation",
+    "ignore_conflicts", "2026-10-01", "quinta-feira, 1 de outubro", "09:00"]) assert.ok(p.includes(k), k);
+  assert.ok(p.length > full.length);
+  assert.ok(!chat.includes("list_events"), "modo conversa nunca leva o guia");
 });
 
 test("modo conversa não leva integrações nem My Hub, mas leva a personalidade e a emoção", () => {

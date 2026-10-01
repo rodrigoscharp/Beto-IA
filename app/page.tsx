@@ -1052,6 +1052,8 @@ export default function JarvisPage() {
         if (res.status === 401) { window.location.href = "/login"; return; } // sessão expirou: volta ao login em vez de falhar calado
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        // Agenda sem login do Google (ou sessão vencida): vai para o login, como o Calendar já fazia.
+        if (data.needsGoogleLogin) { window.location.href = "/api/calendar/login"; return; }
         rawReply = data.reply as string;
       }
       if (turn !== turnSeq.current) return;   // outro turno começou enquanto esperava

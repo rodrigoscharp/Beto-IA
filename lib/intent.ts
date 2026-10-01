@@ -58,6 +58,7 @@ export function needsTools(messages: ChatMsg[]): boolean {
 
   if (words(text) < 3) return true;           // "sim", "quero", "a segunda": pode responder a uma oferta
   if (TOOL_WORDS.test(text)) return true;
+  if (wantsCalendar(messages)) return true;     // agenda: ferramentas, nunca o streaming de conversa
   if (/\d/.test(text)) return true;           // número quase sempre é valor, hora ou quantidade: prompt completo
 
   // O Beto fez uma pergunta (em qualquer ponto do fim da fala) e a resposta curta é "sim", "pode", "quero"...:
@@ -67,4 +68,51 @@ export function needsTools(messages: ChatMsg[]): boolean {
       && norm(prev.content).slice(-200).includes("?")) return true;
 
   return false;
+}
+
+/* ── Calendar ────────────────────────────────────────────────────────────── */
+
+const CALENDAR_WORDS = new RegExp(
+  "\\b(" + [
+    "agenda\\w*", "agend\\w*", "evento\\w*", "reuni\\w*", "compromisso\\w*", "calendario", "marc\\w*", "remarc\\w*",
+    "cancel\\w*", "desmarc\\w*", "adi\\w+ a reuni\\w*", "horario\\w*", "livre", "ocupad\\w*", "disponivel", "disponibilidade",
+    "o que (eu )?tenho", "tenho (algo|algum|alguma|reuniao|compromisso)", "proximo evento", "proxima reuniao", "almoco", "cafe com",
+  ].join("|") + ")\\b",
+);
+
+/** Pergunta do Beto sobre uma mudança na agenda (cancelar, remarcar, conflito): a resposta curta que vem depois é do Calendar. */
+const CALENDAR_QUESTION = /(cancel|apag|remov|exclu|remarc|mov|alter|mud|troc|marc|conflit|agenda|reuni|evento|compromisso)/;
+
+/** O pedido (ou a resposta curta a uma pergunta do Beto) é sobre agenda: as ferramentas do Calendar entram na conversa. */
+export function wantsCalendar(messages: ChatMsg[]): boolean {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "user") { lastUser = i; break; }
+  if (lastUser < 0) return false;
+  const text = norm(messages[lastUser].content);
+  if (CALENDAR_WORDS.test(text)) return true;
+  const prev = messages[lastUser - 1];
+  if (prev && prev.role === "assistant" && words(text) < 6 && /^(sim|pode|claro|isso|ok|beleza|nao|negativo|aham|uhum|confirma)/.test(text)) {
+    const p = norm(prev.content);
+    return p.slice(-220).includes("?") && CALENDAR_QUESTION.test(p);
+  }
+  return false;
+}
+
+/* Confirmação para ações que não têm volta (cancelar evento, remarcar com convidados). Quem decide é o SERVIDOR,
+   não o modelo: só vale se a última fala do chefe for um "sim" curto, sem restrição, logo depois de uma pergunta do Beto
+   sobre cancelar/remarcar. "cancela a reunião" nunca confirma nada. */
+const CONFIRM_START = /^(sim|pode|confirma\w*|claro|isso|ok|beleza|aham|uhum|fechado|com certeza|positivo|faz isso|vai la|manda ver)\b/;
+const NEGATION = /\b(nao|mas|so que|espera|para|pera|deixa|depois)\b/;
+const CONFIRM_QUESTION = /(cancel|apag|remov|exclu|remarc|mov|alter|mud|troc|confirm)/;
+
+export function userConfirmed(messages: ChatMsg[]): boolean {
+  let lastUser = -1;
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "user") { lastUser = i; break; }
+  if (lastUser < 1) return false;
+  const text = norm(messages[lastUser].content);
+  if (words(text) > 6 || !CONFIRM_START.test(text) || NEGATION.test(text)) return false;
+  const prev = messages[lastUser - 1];
+  if (!prev || prev.role !== "assistant") return false;
+  const p = norm(prev.content);
+  return p.slice(-220).includes("?") && CONFIRM_QUESTION.test(p);
 }
