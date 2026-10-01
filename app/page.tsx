@@ -78,19 +78,7 @@ const TAG = {
   MYHUB:    /\[MYHUB:(\{[\s\S]*?\})\]\s*/,
 };
 
-/* Frases curtas que o Beto solta na hora enquanto pensa, para a conversa não ter silêncio morto.
-   O áudio de cada uma é gerado uma vez e guardado no navegador (Cache Storage): custo de TTS só na primeira vez. */
-const FILLERS = [
-  "Deixa comigo, chefe.",
-  "Já vejo isso.",
-  "Um segundo, chefe.",
-  "Boa, deixa eu pensar.",
-  "Hmm, deixa eu ver.",
-  "Pera aí que eu já te falo.",
-  "Já te respondo, chefe.",
-  "Tô olhando aqui.",
-];
-/* Saudações puras ("bom dia", "oi", "tudo bem?") o Beto responde na hora, sem modelo e sem filler:
+/* Saudações puras ("bom dia", "oi", "tudo bem?") o Beto responde na hora, sem modelo:
    as respostas são áudio pré-gerado guardado no navegador. Qualquer coisa a mais na frase vai para o modelo. */
 const GREETINGS = {
   bomdia:  ["Bom dia, chefe! Quer que eu passe o briefing do dia?", "Bom dia, chefe! Bora pra mais um dia. Quer o briefing?"],
@@ -113,9 +101,8 @@ function greetingKind(text: string): GreetingKind | null {
 }
 
 const GREETING_PHRASES: string[] = Object.values(GREETINGS).flatMap(v => [...v]);
-const FILLER_CACHE = "beto-fillers-v2";   // v2: regerados na velocidade nova da voz
+const GREETING_CACHE = "beto-fillers-v2";   // nome antigo mantido de propósito: trocar regeraria os áudios e gastaria cota da ElevenLabs
 const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começar a tocar a resposta
-const FILLER_DELAY_MS = 250;   // só cobre o silêncio se a resposta demorar mais que isso
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
 const FOLLOWUP_GAP   = 250;    // respiro entre o fim da voz dele e abrir o microfone (evita ouvir o próprio eco)
@@ -124,7 +111,6 @@ const END_CONVERSATION = /^(valeu|obrigad[oa]|tchau|é isso|só isso|era isso|po
 const CLAIMS_WRITE    = /\b(anotei|anotado|registrei|registrado|lancei|lançado|adicionei|adicionado|coloquei|marquei)\b/i;
 const REGISTER_INTENT = /\b(gast|receb|anot|regist|adicion|coloc|lanc|lanç|marca|cria|bebi|treinei|estudei|paguei|comprei)/i;
 const HAS_TAG         = /\[[A-Z]+:\{/;
-const FILLER_MIN_WORDS = 4;    // comando curto ("pausa", "próxima") não precisa de enrolação
 
 /* ══════════════════════════════════════════════════════════════════════════
    Pure helpers
@@ -166,24 +152,6 @@ function getSR(): SRCtor | null {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
-function pickVoice(): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
-  const find   = (fn: (v: SpeechSynthesisVoice) => boolean) => voices.find(fn) ?? null;
-  return (
-    find(v => /daniel/i.test(v.name)          && v.lang.startsWith("pt")) ||
-    find(v => /ricardo/i.test(v.name)         && v.lang.startsWith("pt")) ||
-    find(v => /antonio|antônio/i.test(v.name) && v.lang.startsWith("pt")) ||
-    find(v => /eddy/i.test(v.name)            && v.lang.startsWith("pt")) ||
-    find(v => /reed/i.test(v.name)            && v.lang.startsWith("pt")) ||
-    find(v => /thomas|tomás/i.test(v.name)    && v.lang.startsWith("pt")) ||
-    find(v => /luca/i.test(v.name)            && v.lang.startsWith("pt")) ||
-    find(v => v.lang === "pt-BR" && !v.localService)                      ||
-    find(v => v.lang === "pt-BR")                                          ||
-    find(v => v.lang.startsWith("pt"))                                     ||
-    null
-  );
-}
-
 /* ══════════════════════════════════════════════════════════════════════════
    Component
 ══════════════════════════════════════════════════════════════════════════ */
@@ -216,11 +184,6 @@ export default function JarvisPage() {
   const wakeBlocked    = useRef(false);
   const wakeFails      = useRef(0);
   const wakeLock       = useRef<{ release(): Promise<void> } | null>(null);
-  const fillerUrls     = useRef<string[]>([]);
-  const fillerAudio    = useRef<HTMLAudioElement | null>(null);
-  const fillerEnd      = useRef<(() => void) | null>(null);
-  const fillerDone     = useRef<Promise<void> | null>(null);
-  const fillerLast     = useRef(-1);
   const cachedAudio    = useRef(new Map<string, string>());   // frase pré-gerada -> blob URL
   const musicPlaying   = useRef(false);
   const lastUndo       = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);
@@ -265,7 +228,7 @@ export default function JarvisPage() {
     setMode("wake");
     startWake();
 
-    const prefetch = setTimeout(prefetchFillers, 3000);
+    const prefetch = setTimeout(prefetchGreetings, 3000);
     return () => clearTimeout(prefetch);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -389,32 +352,29 @@ export default function JarvisPage() {
     player.connect();
   }
 
-  /* ── Fillers: resposta instantânea enquanto o modelo pensa ────────────── */
+  /* ── Saudações: áudio gerado uma vez e guardado no navegador (Cache Storage) ─────────── */
 
-  async function prefetchFillers() {
+  async function prefetchGreetings() {
     if (typeof caches === "undefined") return;
     try {
-      const cache = await caches.open(FILLER_CACHE);
-      for (const text of [...FILLERS, ...GREETING_PHRASES]) {
-        const isGreeting = GREETING_PHRASES.includes(text);
-        const key = `/__filler/${encodeURIComponent(text)}`;
+      const cache = await caches.open(GREETING_CACHE);
+      for (const text of GREETING_PHRASES) {
+        const key = `/__filler/${encodeURIComponent(text)}`;   // prefixo antigo mantido: é a chave do cache já gravado nos aparelhos
         let res = await cache.match(key);
         if (!res) {
           const r = await fetch("/api/tts", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
-            // saudação tem silêncio na frente (o áudio do aparelho acorda); filler não, para entrar seco e rápido
-            body:    JSON.stringify(isGreeting ? { text, lead: true } : { text }),
+            // silêncio na frente: o áudio do aparelho acorda sem comer o início da frase
+            body:    JSON.stringify({ text, lead: true }),
           });
           if (!r.ok) continue;
           await cache.put(key, r.clone());
           res = r;
         }
-        const url = URL.createObjectURL(await res.blob());
-        cachedAudio.current.set(text, url);
-        if (!isGreeting) fillerUrls.current.push(url);
+        cachedAudio.current.set(text, URL.createObjectURL(await res.blob()));
       }
-    } catch { /* sem cache: o Beto só responde pelo caminho normal */ }
+    } catch { /* sem cache: o Beto responde pelo caminho normal */ }
   }
 
   /** Toca uma frase pré-gerada na hora. Devolve false se ainda não está no cache (aí cai no TTS normal). */
@@ -438,37 +398,6 @@ export default function JarvisPage() {
     return true;
   }
 
-  function playFiller() {
-    const urls = fillerUrls.current;
-    if (!urls.length || fillerAudio.current || !audioUnlocked.current) return;
-    let i = Math.floor(Math.random() * urls.length);
-    if (urls.length > 1 && i === fillerLast.current) i = (i + 1) % urls.length;
-    fillerLast.current = i;
-
-    const audio = new Audio(urls[i]);
-    fillerAudio.current = audio;
-    fillerDone.current  = new Promise<void>(resolve => {
-      fillerEnd.current = () => {
-        fillerAudio.current = null;
-        fillerEnd.current   = null;
-        resolve();
-      };
-    });
-    audio.onended = () => fillerEnd.current?.();
-    audio.onerror = () => fillerEnd.current?.();
-    audio.play().catch(() => fillerEnd.current?.());
-  }
-
-  function stopFiller() {
-    try { fillerAudio.current?.pause(); } catch { /* ok */ }
-    fillerEnd.current?.();
-  }
-
-  /** Espera o filler terminar de falar, para a resposta de verdade não falar por cima dele. */
-  async function waitFiller() {
-    if (fillerAudio.current && fillerDone.current) await fillerDone.current;
-  }
-
   /* ── Mode & stop helpers ─────────────────────────────────────────────── */
 
   function setMode(m: Mode) {
@@ -487,7 +416,6 @@ export default function JarvisPage() {
   }
 
   function stopAll() {
-    stopFiller();
     clearRestartTimer();
     try { wakeRec.current?.abort();   } catch { /* ok */ }
     try { activeRec.current?.abort(); } catch { /* ok */ }
@@ -533,7 +461,7 @@ export default function JarvisPage() {
       lower.includes("pomodoro") ? "Pomodoro finalizado! Hora de uma pausa merecida." :
       lower.includes("pausa")    ? "Pausa encerrada. Bora voltar ao foco!"            :
       `${label} finalizado!`;
-    speak(msg, () => { setMode("wake"); startWake(); }, Promise.resolve(), "alegre");
+    speak(msg, () => { setMode("wake"); startWake(); }, "alegre");
   }
 
   function getCountdownStatus(): string {
@@ -543,8 +471,7 @@ export default function JarvisPage() {
 
   /* ── TTS: ElevenLabs with MediaSource streaming, synth fallback ──────── */
 
-  /** `gate`: só começa a tocar depois dele (ex.: o filler terminar). O áudio já vai sendo buscado e bufferizado enquanto isso. */
-  function speak(text: string, onDone: () => void, gate: Promise<void> = Promise.resolve(), emotion: Emotion = "neutro") {
+  function speak(text: string, onDone: () => void, emotion: Emotion = "neutro") {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     window.speechSynthesis?.cancel();
     // Nada para falar (ex.: a resposta veio só com a tag de emoção): segue o fluxo sem ficar mudo em "speaking".
@@ -556,18 +483,9 @@ export default function JarvisPage() {
 
     const done = () => { setTalking(false); setCaption(""); onDone(); };
 
-    const synthFallback = () => {
-      const synth = window.speechSynthesis;
-      if (!synth) { done(); return; }
-      const u   = new SpeechSynthesisUtterance(text);
-      const v   = pickVoice();
-      if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "pt-BR"; }
-      u.rate    = 0.88; u.pitch = 0.78; u.volume = 1;
-      u.onstart = () => setTalking(true);
-      u.onend   = done;
-      u.onerror = done;
-      gate.then(() => synth.speak(u));
-    };
+    // Sem a voz da ElevenLabs (cota acabou, chave recusada) o Beto NÃO troca por outra voz: o texto fica na tela
+    // pelo tempo de ler e a conversa segue. O motivo fica nos logs da rota /api/tts.
+    const silent = () => { setTimeout(done, Math.min(8000, 1500 + text.length * 55)); };
 
     fetch("/api/tts", {
       method:  "POST",
@@ -601,13 +519,12 @@ export default function JarvisPage() {
             const waitUpdate = () =>
               new Promise<void>(r => sb.addEventListener("updateend", () => r(), { once: true }));
 
-            // Só começa a tocar com um pouco de áudio já bufferizado (ou no fim do stream, se for curto) e depois do gate:
+            // Só começa a tocar com um pouco de áudio já bufferizado (ou no fim do stream, se for curto):
             // começar no primeiro pedacinho fazia o início da fala sair cortado.
             let started = false;
             const start = async () => {
               if (started) return;
               started = true;
-              await gate;
               audio.play().catch(() => {});
             };
             const buffered = () => audio.buffered.length ? audio.buffered.end(audio.buffered.length - 1) - audio.currentTime : 0;
@@ -638,12 +555,12 @@ export default function JarvisPage() {
               audio.onplaying = () => setTalking(true);
               audio.onended = cleanup;
               audio.onerror = cleanup;
-              gate.then(() => audio.play()).catch(done);
+              audio.play().catch(done);
             })
-            .catch(synthFallback);
+            .catch(silent);
         }
       })
-      .catch(synthFallback);
+      .catch(silent);
   }
 
   /* ── Spotify deep-link + playback polling ────────────────────────────── */
@@ -1038,17 +955,13 @@ export default function JarvisPage() {
         if (!musicPlaying.current && getSR()) setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
         else { setMode("wake"); setTimeout(startWake, 300); }
       };
-      if (!speakCached(reply, after, "alegre")) speak(reply, after, Promise.resolve(), "alegre");
+      if (!speakCached(reply, after, "alegre")) speak(reply, after, "alegre");
       return;
     }
 
     setMode("thinking");
     const msgs: Msg[] = [...history.current, { role: "user", content: text }];
     history.current   = msgs;
-
-    const fillerTimer = text.trim().split(/\s+/).length >= FILLER_MIN_WORDS
-      ? setTimeout(playFiller, FILLER_DELAY_MS)
-      : null;
 
     try {
       const res  = await fetch("/api/chat", {
@@ -1083,18 +996,16 @@ export default function JarvisPage() {
       // O histórico guarda a tag: ver o formato nas respostas anteriores ajuda o modelo a não esquecer dela.
       history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${rawReply}` }];
 
-      if (fillerTimer) clearTimeout(fillerTimer);
       // Respostas de conversa/consulta continuam ouvindo; comando de música, timer e memória voltam ao wake word
       // (com música tocando o microfone aberto captaria a letra como se fosse você).
       const say  = async (t: string, followUp = false, emotion: Emotion = emo.emotion) => {
-        // O áudio da resposta já é buscado agora, em paralelo ao filler; só começa a tocar quando o filler acaba.
         speak(sanitize(t), () => {
           if (followUp && !musicPlaying.current && getSR()) {
             setTimeout(() => startActive(FOLLOWUP_MS), FOLLOWUP_GAP);
           } else {
             setMode("wake"); setTimeout(startWake, 300);
           }
-        }, waitFiller(), emotion);
+        }, emotion);
       };
 
       const spotify  = parseTag<SpotifyAction>(rawReply,  TAG.SPOTIFY);
@@ -1130,9 +1041,7 @@ export default function JarvisPage() {
       else                      say(rawReply, true);
 
     } catch {
-      if (fillerTimer) clearTimeout(fillerTimer);
-      stopFiller();
-      speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); }, Promise.resolve(), "triste");
+      speak("Desculpe, houve um erro na comunicação.", () => { setMode("wake"); startWake(); }, "triste");
     }
   }
 
