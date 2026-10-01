@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
 import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion } from "@/components/face";
-import { claimsWrite, needsTools } from "@/lib/intent";
+import { claimsWrite, needsTools, wantsCalendarWrite, wantsMemoryForget, wantsMemorySave, wantsMyHubWrite } from "@/lib/intent";
 import { ReplyStream, type StreamEvent } from "@/lib/replystream";
 import { SpeechQueue } from "@/lib/speechqueue";
 import type { QuotaInfo } from "@/lib/ops";
@@ -1109,7 +1109,8 @@ export default function JarvisPage() {
     const q: SpeechQueue = queue;
     const spoken = parseEmotion(end.full);
     // O modelo sem ferramentas disse que registrou/marcou algo: nada foi feito. Termina de falar e refaz com o prompt completo.
-    if (claimsWrite(spoken.text)) {
+    // (só se o chefe pediu escrita: "o segredo ficou guardado" numa conversa comum não é confirmação falsa)
+    if (claimsWrite(spoken.text) && (wantsCalendarWrite(msgs) || wantsMyHubWrite(msgs) || wantsMemorySave(msgs) || wantsMemoryForget(msgs))) {
       await q.end();
       if (turn !== turnSeq.current || queueRef.current !== q || q.isCancelled()) return { done: true, full: null };
       queueRef.current = null;

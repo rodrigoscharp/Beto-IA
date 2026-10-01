@@ -37,3 +37,14 @@ Saem do navegador `execMemory`, a tag `[MEMORY:]` e a rota `/api/memory/command`
 - E2E com Groq falsa e Supabase falso (PostgREST): guardar, não duplicar, listar, rede de proteção ("Anotado" sem ferramenta refaz e guarda), injeção (modelo manda `memory_save` num pedido de email: recusado), "esquece, deixa pra lá" (não apaga) e esquecer só a memória pedida. Conversa comum não anexa as ferramentas.
 - `claimsWrite` passou a entender guardei, guardado, salvei, memorizei e esqueci.
 - Comportamento de cada modelo real com as ferramentas só aparece em produção.
+
+## Correções depois da revisão independente
+
+- **Origem do conteúdo:** `memory_save` só vale se metade das palavras de peso do conteúdo aparece na fala do chefe (`userText`, com tolerância de "gosto/gosta"); `memory_forget` exige todas as palavras da busca na fala dele. Um título de evento ou email copiado pelo modelo não vira memória, mesmo quando o pedido do chefe abriu o portão ("vê minha agenda e lembra que…"). Resta o caso de o chefe colar texto de terceiros na própria fala e pedir para lembrar: aí o pedido é dele.
+- **Intenção:** negação e "parar de lembrar" nunca ligam salvar; pergunta ("você lembra que…?"), compromisso ("preciso lembrar que amanhã…") e arquivo ("salva no drive") também não. "grava que", "toma nota", "apaga a memória do jazz", "esquece que eu tenho cachorro" e "quais coisas você lembra" passam a valer.
+- **Resposta curta:** "a do jazz" após "qual você quer que eu esqueça?" e "sim" após "quer que eu guarde…?" valem como intenção e levam a pergunta do Beto como base de origem.
+- **Tema largo só para anexar** as ferramentas; quem executa continua o portão estrito. Se disser que guardou sem intenção executável, o servidor troca por uma frase honesta.
+- **Rede de proteção sem falso positivo:** `claimsWrite` perdeu "guardado" e "esqueci"/"salvei" soltos ("o segredo ficou guardado", "salvei a pátria") e ignora "já tá guardado". O navegador só refaz com o prompt completo se o chefe pediu escrita. O desfazer do My Hub ignora fala anterior sobre memória.
+- **Banco:** erro do Supabase vira `failed` (não "nada guardado" nem `not_found`) e não é cacheado; `deleteMemory` confere que apagou uma linha; o cache tem contador de geração contra busca em voo que repõe dado velho.
+- **Dedup:** igualdade ou contenção em limite de palavra com diferença de até 2 palavras ("usa Mac" não bloqueia "usa Macbook Pro com Linux"). Busca de esquecer aceita plural e recusa "tudo" e o nome do chefe.
+- **Deferido (Minor):** o cache é por instância serverless (outras instâncias podem mostrar a memória esquecida por até 5 minutos); janela de 200 memórias na busca.

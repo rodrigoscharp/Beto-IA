@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, groqChatStream, groqComplete, workingModel } from "@/lib/groq";
-import { deleteMemory, listMemories, saveMemory } from "@/lib/supabase";
+import { deleteMemory, listMemoriesStrict, saveMemory } from "@/lib/supabase";
 import { getMyHubContext, myHubDesfazer, myHubRegistrar, myHubWriteConfigured, type MyHubContext } from "@/lib/myhub";
 import { myHubPromptBlock } from "@/lib/myhubprompt";
 import { getBrasiliaTime } from "@/lib/time";
-import { claimsWrite, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMemory, wantsMemoryForget, wantsMemorySave, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
+import { claimsWrite, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, memoryGroundText, wantsMemory, wantsMemoryForget, wantsMemorySave, wantsMemoryTopic, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
 import { runToolLoop, type LoopMsg } from "@/lib/toolloop";
 import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/calendar";
 import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
@@ -82,9 +82,10 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
 
   const memCtx: MemoryCtx = {
     api: memoryConfigured()
-      ? { list: async (n) => (await listMemories(n)).flatMap((m) => (m.id ? [{ id: m.id, content: m.content, category: m.category, created_at: m.created_at }] : [])), save: saveMemory, remove: deleteMemory }
+      ? { list: async (n) => (await listMemoriesStrict(n)).flatMap((m) => (m.id ? [{ id: m.id, content: m.content, category: m.category, created_at: m.created_at }] : [])), save: saveMemory, remove: deleteMemory }
       : null,
     saveIntent: wantsMemorySave(messages), forgetIntent: wantsMemoryForget(messages),
+    userText: memoryGroundText(messages),   // só o que o CHEFE disse: o conteúdo salvo e a busca de esquecer têm de vir daqui
     state: { saves: 0, forgets: 0 },
   };
 
@@ -111,7 +112,7 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
         const r = name.startsWith("my_hub_") ? await executeMyHubTool(name, args, hubCtx)
           : name.startsWith("memory_") ? await executeMemoryTool(name, args, memCtx)
           : await executeCalendarTool(name, args, calCtx);
-        if (memCtx.state.changed) _memCache = null;   // a próxima conversa já enxerga o que foi guardado ou esquecido
+        if (memCtx.state.changed) { _memCache = null; _memGen++; }   // a próxima conversa já enxerga o que foi guardado ou esquecido
         if ((r as { needsLogin?: boolean })?.needsLogin) needsLogin = true;
         if (WRITE_DONE.has((r as { status?: string })?.status ?? "")) acted = true;
         return r;
@@ -144,6 +145,11 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
     if (!acted && claimsWrite(text)) text = "Não consegui concluir isso agora, chefe.";   // nunca dizer que fez sem ter feito
   }
 
+  // Falou de memória e disse que fez, mas o pedido não foi dos que o servidor executa e nada foi gravado.
+  if (!acted && sets.memory && !memCtx.saveIntent && !memCtx.forgetIntent && wantsMemoryTopic(messages) && claimsWrite(text)) {
+    text = "Não guardei nem apaguei nada, chefe. Diz \"lembra que...\" ou \"esquece que...\" e eu faço.";
+  }
+
   if (!text && result.hitLimit) {
     text = acted ? "Fiz parte do pedido, mas não consegui terminar. Confere lá, chefe." : "Não consegui concluir isso agora, chefe.";
   }
@@ -158,11 +164,13 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
 const memoryConfigured = () => !!(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
 
 // Cache memórias por 5 min para não bater no Supabase a cada mensagem
+let _memGen = 0;   // sobe a cada escrita: uma busca em voo iniciada antes não repõe o dado velho
 let _memCache: { data: { content: string; category: string }[]; ts: number } | null = null;
 async function getCachedMemories() {
   if (_memCache && Date.now() - _memCache.ts < 5 * 60 * 1000) return _memCache.data;
   // Não deixa o Supabase atrasar a resposta: passou de 600ms, segue sem memórias nesta vez.
-  const fetching = listMemories(25).then((data) => { _memCache = { data, ts: Date.now() }; return data; });
+  const gen = _memGen;
+  const fetching = listMemoriesStrict(25).then((data) => { if (gen === _memGen) _memCache = { data, ts: Date.now() }; return data; });
   fetching.catch(() => {});
   const slow = new Promise<null>((r) => setTimeout(() => r(null), 600));
   try {
@@ -277,7 +285,7 @@ export async function POST(req: NextRequest) {
     let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
     const hubOn = myHubWriteConfigured();
-    const wanted: ToolSets = { calendar: wantsCalendar(messages), myhub: hubOn && (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)), memory: memoryConfigured() && wantsMemory(messages) };
+    const wanted: ToolSets = { calendar: wantsCalendar(messages), myhub: hubOn && (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)), memory: memoryConfigured() && (wantsMemory(messages) || wantsMemoryTopic(messages)) };
     const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured() };
     const viaTools = async (sets: ToolSets) => {
       const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));

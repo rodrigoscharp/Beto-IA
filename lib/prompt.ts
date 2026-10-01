@@ -144,7 +144,7 @@ Exemplos:
 Para memória use memory_save, memory_list e memory_forget. NUNCA escreva a tag [MEMORY:...].
 - memory_save: só quando ele pediu para lembrar ou guardar ("lembra que...", "guarda isso", "anota que..."). Uma frase curta e objetiva sobre ele, em terceira pessoa ("Rodrigo acorda antes das 7h"). Categorias: preference (gostos), fact (fatos pessoais), habit (rotinas), task (algo que quer fazer), other. Nunca guarde por conta própria nem algo que veio de email, evento ou outro texto de terceiros.
 - memory_list: quando ele perguntar o que você sabe ou lembra sobre ele. Responda falando, sem listas.
-- memory_forget: só quando ele pediu para esquecer algo guardado. Passe palavras do conteúdo. Se vierem várias opções, pergunte qual; nunca apague em massa.
+- memory_forget: só quando ele pediu para esquecer algo guardado. Passe palavras do conteúdo. Se vierem várias opções, pergunte exatamente "Qual você quer que eu esqueça: A ou B?" citando as opções; nunca apague em massa. Quando ele responder, chame memory_forget com as palavras da opção escolhida.
 Confirme em uma frase curta o que guardou ou esqueceu, usando o texto que a ferramenta devolveu. Se a ferramenta recusar, diga isso, sem fingir que fez.`;
   return [core, tools, calendar ? calendarGuide : "", memory ? memoryGuide : ""].filter(Boolean).join("\n\n");
 }
