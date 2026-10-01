@@ -59,6 +59,7 @@ export function needsTools(messages: ChatMsg[]): boolean {
   if (words(text) < 3) return true;           // "sim", "quero", "a segunda": pode responder a uma oferta
   if (TOOL_WORDS.test(text)) return true;
   if (wantsCalendar(messages)) return true;     // agenda: ferramentas, nunca o streaming de conversa
+  if (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) return true;   // registrar no My Hub: ferramentas
   if (/\d/.test(text)) return true;           // número quase sempre é valor, hora ou quantidade: prompt completo
 
   // O Beto fez uma pergunta (em qualquer ponto do fim da fala) e a resposta curta é "sim", "pode", "quero"...:
@@ -136,7 +137,7 @@ const CONFIRM_TOKENS = new Set(["sim", "pode", "confirma", "confirmo", "confirma
   "fechado", "certeza", "com", "positivo", "faz", "manda", "ver", "vai", "la", "por", "favor", "chefe", "beto", "ser", "cancelar", "apagar",
   "remarcar", "mudar", "marcar"]);
 const STRONG_YES = new Set(["sim", "pode", "confirma", "confirmo", "confirmado", "claro", "isso", "ok", "beleza", "aham", "uhum", "fechado", "positivo", "faz", "manda", "vai"]);
-const CONFIRM_QUESTION = /(cancel|apag|delet|remov|exclu|remarc|remarq|mov|alter|mud|troc|marc|marq|agend|cri|coloc|conflit|confirm)/;
+const CONFIRM_QUESTION = /(cancel|apag|delet|remov|exclu|remarc|remarq|mov|alter|mud|troc|marc|marq|agend|cri|coloc|conflit|confirm|regist|lanc|anot|adicion)/;
 
 export function userConfirmed(messages: ChatMsg[]): boolean {
   const last = lastUserText(messages);
@@ -150,4 +151,44 @@ export function userConfirmed(messages: ChatMsg[]): boolean {
   const question = sentences[sentences.length - 1] ?? "";
   // Pergunta de alternativa ("cancelo ou remarco?", "cancelo? Ou prefere mudar?"): um "sim" é ambíguo e não confirma nada.
   return question.endsWith("?") && CONFIRM_QUESTION.test(question) && !/\bou\b/.test(question);
+}
+
+/* ── My Hub e rede de proteção ───────────────────────────────────────────── */
+
+const MONEY_VERB = /\b(gastei|paguei|comprei|recebi|ganhei|abasteci|almocei|jantei|depositei|transferi)\b/;
+const MONEY_CUE = /(^|\s|r\$)\d|\b(reais|real|conto|pila|mil|centavos)\b/;   // número solto (45, 1.500), não dígito dentro de palavra
+const QUESTION = /\b(quanto|quantos|quantas|qual|quais|como|onde|quando|por que|porque)\b/;
+const ACTIVITY_VERB = /\b(bebi|treinei|estudei|meditei|dormi|corri|caminhei|malhei|pedalei|nadei)\b/;
+const REGISTER_VERB = /\b(anota|anote|registra|registre|lanca|lance|adiciona|adicione|coloca|bota|marca|marque|cria|crie)\b/;
+const REGISTER_NOUN = /\b(gasto|gastos|despesa|despesas|receita|receitas|transacao|tarefa|tarefas|habito|habitos|meta|metas|treino|estudo|projeto)\b/;
+
+/** O chefe pediu para REGISTRAR algo no My Hub (gasto, receita, hábito, tarefa). Consulta ("quanto gastei?") não conta. */
+export function wantsMyHubWrite(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  if (!last) return false;
+  const t = last.text;
+  // Pergunta é consulta ("quanto gastei em 2025?"), nunca registro. Só o "sim" a uma pergunta de valor (abaixo) escapa disso.
+  const consulta = QUESTION.test(t) || t.trim().endsWith("?");
+  if (!consulta) {
+    if (MONEY_VERB.test(t) && MONEY_CUE.test(t)) return true;
+    if (ACTIVITY_VERB.test(t)) return true;
+    if (REGISTER_VERB.test(t) && REGISTER_NOUN.test(t)) return true;
+    if (REGISTER_VERB.test(t) && MONEY_CUE.test(t) && !isCalendarTalk(t)) return true;
+  }
+  // O "sim" a uma pergunta de valor ("Registro uma despesa de R$ 1.500?") também libera o registro.
+  const prev = messages[last.index - 1];
+  return userConfirmed(messages) && !!prev && /(r\$|reais|valor|conto|pila)/.test(norm(prev.content));
+}
+
+/** "desfaz", "errei", "foi engano": desfazer o último registro do My Hub. */
+export function wantsMyHubUndo(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  if (!last) return false;
+  if (/\bnao\b/.test(last.text)) return false;
+  return /\b(desfaz|desfaca|desfazer|desfiz|errei|foi engano|cancela (isso|esse|o ultimo)|apaga esse registro|volta atras)\b/.test(last.text);
+}
+
+/** O texto diz que JÁ fez algo (registrou, marcou, cancelou…). Se nenhuma ferramenta de escrita executou, é mentira. */
+export function claimsWrite(text: string): boolean {
+  return /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz)\b/.test(norm(text));
 }

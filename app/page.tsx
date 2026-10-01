@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Orb, { OrbState } from "@/components/Orb";
 import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion } from "@/components/face";
-import { needsTools } from "@/lib/intent";
+import { claimsWrite, needsTools } from "@/lib/intent";
 import { ReplyStream, type StreamEvent } from "@/lib/replystream";
 import { SpeechQueue } from "@/lib/speechqueue";
 import type { QuotaInfo } from "@/lib/ops";
@@ -60,8 +60,6 @@ interface GmailAction    { action: string; days?: number; ref?: string }
 interface GithubAction   { action: string; repo?: string }
 interface TimerAction    { action: string; minutes?: number; label?: string }
 interface MemoryAction   { action: string; content?: string; category?: string }
-interface MyHubAction    { acao: string; entrada?: unknown }
-interface MyHubResult    { ok: boolean; acao?: { resumo: string; desfazer?: string }; erro?: string }
 
 /* ══════════════════════════════════════════════════════════════════════════
    Constants
@@ -77,7 +75,6 @@ const TAG = {
   TIMER:    /\[TIMER:(\{[\s\S]*?\})\]\s*/,
   MEMORY:   /\[MEMORY:(\{[\s\S]*?\})\]\s*/,
   BRIEFING: /\[BRIEFING:(\{[\s\S]*?\})\]\s*/,
-  MYHUB:    /\[MYHUB:(\{[\s\S]*?\})\]\s*/,
 };
 
 /* Saudações puras ("bom dia", "oi", "tudo bem?") o Beto responde na hora, sem modelo:
@@ -109,10 +106,6 @@ const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começa
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
 const FOLLOWUP_GAP   = 250;    // respiro entre o fim da voz dele e abrir o microfone (evita ouvir o próprio eco)
 const END_CONVERSATION = /^(valeu|obrigad[oa]|tchau|é isso|só isso|era isso|por hoje é isso|pode parar|pode ficar quieto|fechou|beleza)([\s,.!]+(beto|chefe))?[\s.!]*$/i;
-/* Rede de proteção: o modelo diz que registrou sem ter mandado a tag (nada foi gravado). */
-const CLAIMS_WRITE    = /\b(anotei|anotado|registrei|registrado|lancei|lançado|adicionei|adicionado|coloquei|marquei)\b/i;
-const REGISTER_INTENT = /\b(gast|receb|anot|regist|adicion|coloc|lanc|lanç|marca|cria|bebi|treinei|estudei|paguei|comprei)/i;
-const HAS_TAG         = /\[[A-Z]+:\{/;
 
 /* ══════════════════════════════════════════════════════════════════════════
    Pure helpers
@@ -200,8 +193,7 @@ export default function JarvisPage() {
   const wakeLock       = useRef<{ release(): Promise<void> } | null>(null);
   const cachedAudio    = useRef(new Map<string, string>());   // frase pré-gerada -> blob URL
   const musicPlaying   = useRef(false);
-  const lastUndo       = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);
-  const undoHinted     = useRef(false);
+  const undoRef        = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);   // último registro desfazível do My Hub (o servidor devolve; o navegador reenvia)
   const lastEmails     = useRef<ListedEmail[]>([]);
 
   /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
@@ -769,42 +761,6 @@ export default function JarvisPage() {
   }
 
   /** Registra no My Hub. Sucesso vira a frase falada (vem do My Hub, não do modelo); erro volta ao modelo para ele perguntar o que falta. */
-  async function execMyHub(action: MyHubAction): Promise<{ text: string } | { error: string }> {
-    const UNDO_WINDOW_MS = 15 * 60 * 1000;
-
-    if (action.acao === "desfazer") {
-      const last = lastUndo.current;
-      if (!last || Date.now() - last.ts > UNDO_WINDOW_MS) return { text: "Não tenho nenhum registro recente pra desfazer, chefe." };
-      if (!last.path) return { text: "Esse eu não consigo desfazer por voz, chefe. Faz direto no My Hub." };
-      try {
-        const res  = await fetch("/api/myhub/desfazer", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ desfazer: last.path }),
-        });
-        const data = await res.json();
-        if (!data.ok) return { text: "Não consegui desfazer agora, chefe. Tenta direto no My Hub." };
-        lastUndo.current = null;
-        return { text: `Desfeito, chefe: ${last.resumo}.` };
-      } catch { return { text: "Não consegui falar com o My Hub agora." }; }
-    }
-
-    try {
-      const res  = await fetch("/api/myhub/acao", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(action),
-      });
-      const data = await res.json() as MyHubResult;
-      if (!data.ok || !data.acao) return { error: data.erro ?? "Não consegui registrar." };
-
-      lastUndo.current = { path: data.acao.desfazer ?? null, resumo: data.acao.resumo, ts: Date.now() };
-      const hint = !undoHinted.current && data.acao.desfazer ? " Se foi engano, é só falar desfaz." : "";
-      if (data.acao.desfazer) undoHinted.current = true;
-      return { text: `Anotado, chefe: ${data.acao.resumo}.${hint}` };
-    } catch { return { error: "Não consegui falar com o My Hub agora." }; }
-  }
-
   /* ── MiniPlayer handler (fire-and-forget, no voice feedback) ─────────── */
 
   function handleSpotifyCommand(action: string) {
@@ -999,8 +955,7 @@ export default function JarvisPage() {
       let held: string | null = null;
       let alreadySpoken = false;
       let forceFull = false;
-      let usedTools = false;   // a resposta veio das ferramentas do servidor (agenda): ela JÁ executou o que disse
-      if (!needsTools(msgs.slice(-20)) && !REGISTER_INTENT.test(text)) {
+      if (!needsTools(msgs.slice(-20))) {
         const r = await streamReply(msgs, turn);
         if (r.done || turn !== turnSeq.current) return;
         held = r.full;
@@ -1015,7 +970,7 @@ export default function JarvisPage() {
         const res  = await fetch("/api/chat", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ messages: msgs.slice(-20), full: forceFull || undefined }),
+          body:    JSON.stringify({ messages: msgs.slice(-20), full: forceFull || undefined, undo: undoRef.current ?? undefined }),
         });
         if (res.status === 401) { window.location.href = "/login"; return; } // sessão expirou: volta ao login em vez de falhar calado
         const data = await res.json();
@@ -1023,26 +978,11 @@ export default function JarvisPage() {
         // Agenda sem login do Google (ou sessão vencida): vai para o login, como o Calendar já fazia.
         if (data.needsGoogleLogin) { window.location.href = "/api/calendar/login"; return; }
         rawReply = data.reply as string;
-        usedTools = data.usedTools === true;
+        if (data.undo) undoRef.current = data.undo;           // novo registro no My Hub: guarda o caminho de desfazer
+        if (data.undoCleared) undoRef.current = null;          // desfez: não há mais o que desfazer
       }
       if (turn !== turnSeq.current) return;   // outro turno começou enquanto esperava
 
-      // Disse que registrou mas não mandou a tag: nada foi gravado. Pede ao modelo para corrigir uma vez.
-      // (Com ferramentas de agenda não: "Pronto, marquei" é verdade e o servidor já criou o evento.)
-      if (!usedTools && CLAIMS_WRITE.test(rawReply) && !HAS_TAG.test(rawReply) && REGISTER_INTENT.test(text)) {
-        try {
-          const retry = await fetch("/api/chat", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            body:    JSON.stringify({ messages: [
-              ...msgs.slice(-18),
-              { role: "assistant", content: rawReply },
-              { role: "user", content: "[SISTEMA] Você disse que registrou, mas não enviou a tag MYHUB, então NADA foi gravado. Responda de novo: envie a tag [MYHUB:{...}] correta agora, ou pergunte só o que falta. Não diga que anotou sem a tag." },
-            ] }),
-          });
-          if (retry.ok) rawReply = String((await retry.json()).reply ?? rawReply);
-        } catch { /* segue com a resposta original */ }
-      }
       // A tag [emo:X] vira o humor do rosto e sai do texto: não é falada, não vai para a legenda nem para as tags de ação.
       const emo = parseEmotion(rawReply);
       rawReply = emo.text;
@@ -1062,7 +1002,6 @@ export default function JarvisPage() {
       const timer    = parseTag<TimerAction>(rawReply,    TAG.TIMER);
       const memory   = parseTag<MemoryAction>(rawReply,   TAG.MEMORY);
       const briefing = parseTag<SpotifyAction>(rawReply,  TAG.BRIEFING);
-      const myhub    = parseTag<MyHubAction>(rawReply,    TAG.MYHUB);
 
       if      (spotify.action)  say(await execSpotify(spotify.action));
 
@@ -1071,18 +1010,6 @@ export default function JarvisPage() {
       else if (timer.action)    say(execTimer(timer.action));
       else if (memory.action)   say(await execMemory(memory.action, memory.text));
       else if (briefing.action) say(await execBriefing(), true);
-      else if (myhub.action) {
-        const r = await execMyHub(myhub.action);
-        if ("text" in r) {
-          // A frase falada é a que fica no histórico: sem a tag, o modelo não a repete.
-          history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${r.text}` }];
-          say(r.text, true);
-        } else {
-          // Faltou dado ou ficou ambíguo: o modelo explica e pergunta, e o Beto já volta a ouvir a resposta.
-          const fail = await askAboutFailure(msgs, myhub.text || "Anotando.", r.error);
-          say(fail.text, true, fail.emotion);
-        }
-      }
       else if (alreadySpoken)   endTurn(true);   // o texto já foi falado em streaming; nenhuma ação a executar
       else                      say(rawReply, true);
 
@@ -1206,7 +1133,7 @@ export default function JarvisPage() {
     const q: SpeechQueue = queue;
     const spoken = parseEmotion(end.full);
     // O modelo sem ferramentas disse que registrou/marcou algo: nada foi feito. Termina de falar e refaz com o prompt completo.
-    if (CLAIMS_WRITE.test(spoken.text)) {
+    if (claimsWrite(spoken.text)) {
       await q.end();
       if (turn !== turnSeq.current || queueRef.current !== q || q.isCancelled()) return { done: true, full: null };
       queueRef.current = null;
@@ -1221,30 +1148,6 @@ export default function JarvisPage() {
     setTalking(false);
     endTurn(true);
     return { done: true, full: null };
-  }
-
-  /** Devolve ao modelo o erro do My Hub e retorna a frase que ele fala (uma pergunta curta). */
-  async function askAboutFailure(msgs: Msg[], said: string, erro: string): Promise<{ text: string; emotion: Emotion }> {
-    const fallback = `Chefe, não consegui registrar: ${erro.replace(/\s*Pergunte[^.]*\.?/i, "").trim()}`;
-    try {
-      const res  = await fetch("/api/chat", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ messages: [
-          ...msgs.slice(-18),
-          { role: "assistant", content: said },
-          { role: "user", content: `[SISTEMA] O registro no My Hub falhou: ${erro} Explique ao chefe em uma frase curta e pergunte só o que falta. Não use tag de ação.` },
-        ] }),
-      });
-      const data = await res.json();
-      const emo  = parseEmotion(String(data.reply ?? ""));
-      const text = emo.text.replace(TAG.MYHUB, "").trim() || fallback;
-      history.current = [...msgs, { role: "assistant", content: `[emo:${emo.emotion}] ${text}` }];
-      return { text, emotion: emo.emotion };
-    } catch {
-      history.current = [...msgs, { role: "assistant", content: `[emo:triste] ${fallback}` }];
-      return { text: fallback, emotion: "triste" };
-    }
   }
 
   /* ── Click / tap handler ─────────────────────────────────────────────── */

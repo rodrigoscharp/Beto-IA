@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, groqChatStream, groqComplete, workingModel } from "@/lib/groq";
 import { listMemories } from "@/lib/supabase";
-import { getMyHubContext, myHubPromptBlock, type MyHubContext } from "@/lib/myhub";
+import { getMyHubContext, myHubDesfazer, myHubRegistrar, myHubWriteConfigured, type MyHubContext } from "@/lib/myhub";
+import { myHubPromptBlock } from "@/lib/myhubprompt";
 import { getBrasiliaTime } from "@/lib/time";
-import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite } from "@/lib/intent";
+import { claimsWrite, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
 import { runToolLoop, type LoopMsg } from "@/lib/toolloop";
 import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/calendar";
 import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
+import { MYHUB_TOOLS, executeMyHubTool, type MyHubCtx } from "@/lib/tools/myhub";
 import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 
@@ -18,51 +20,88 @@ function logMetric(data: Record<string, unknown>) {
   console.log("[beto-metrics]", JSON.stringify({ evt: "chat", ...data }));
 }
 
-function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, calendar = false) {
+function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean } = {}) {
   const t = getBrasiliaTime();
   return buildSystemPrompt(
-    { memories, myhubBlock: myHubPromptBlock(myhub, t.date), date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar },
+    {
+      memories,
+      myhubBlock: myHubPromptBlock(myhub, t.date, { writeConfigured: myHubWriteConfigured(), tools: !!tools.myhub }),
+      date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar,
+    },
     mode,
   );
 }
 
-/* Turno com as ferramentas de agenda: o modelo pode pedir ferramentas (ver, criar, remarcar, cancelar, achar horário),
-   o servidor executa no Google Calendar e devolve o resultado, até o modelo responder em texto. Cancelar e remarcar com
-   convidados só executam se o chefe acabou de confirmar (userConfirmed): quem decide é o servidor, não o modelo. */
-async function replyWithCalendar(req: NextRequest, apiKey: string, messages: Msg[], memories: Memories) {
-  const [myhub, token] = await Promise.all([getMyHubContext(), getGoogleToken(req)]);
+interface ToolSets { calendar: boolean; myhub: boolean }
+
+/** O navegador guarda o último caminho de desfazer do My Hub e o reenvia aqui; valida o formato e limita o tamanho. */
+function parseUndo(raw: unknown): { path: string | null; resumo: string; ts: number } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const pathOk = o.path === null || (typeof o.path === "string" && o.path.length <= 300);
+  if (!pathOk || typeof o.resumo !== "string" || o.resumo.length > 300 || typeof o.ts !== "number" || !Number.isFinite(o.ts)) return null;
+  return { path: o.path as string | null, resumo: o.resumo, ts: o.ts };
+}
+interface UndoState { path: string | null; resumo: string; ts: number }
+
+/** Estados de resultado que significam "a ferramenta de escrita realmente fez o que o chefe pediu". */
+const WRITE_DONE = new Set(["created", "updated", "deleted", "registered", "undone"]);
+
+const CORRECTION = "[SISTEMA] Você disse que já fez, mas nenhuma ferramenta de escrita foi executada com sucesso, então NADA foi feito. Chame agora a ferramenta certa, ou diga o que falta. Não diga que fez sem a ferramenta.";
+
+/* Turno com ferramentas: o modelo pode pedir ferramentas (agenda e/ou My Hub), o servidor executa e devolve o resultado,
+   até o modelo responder em texto. Quem decide o que é permitido é o servidor, não o modelo: cancelar, remarcar com
+   convidados, marcar por cima de conflito e registrar valor alto só executam com o "sim" do chefe a uma pergunta que cita
+   o evento ou o valor (userConfirmed + lib/tools). A rede de proteção "disse que fez sem fazer" também mora aqui. */
+async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[], memories: Memories, sets: ToolSets, undoIn: UndoState | null) {
+  const [myhub, token] = await Promise.all([getMyHubContext(), sets.calendar ? getGoogleToken(req) : Promise.resolve(null)]);
   const t = getBrasiliaTime();
   const userText = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
   let lastUser = -1;
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "user") { lastUser = i; break; }
   const before = lastUser > 0 ? messages[lastUser - 1] : undefined;
-  const ctx: ToolCtx = {
+  const lastAssistant = before?.role === "assistant" ? before.content : "";
+  const confirmed = userConfirmed(messages);
+  const calWrite = wantsCalendarWrite(messages);
+  const hubWrite = wantsMyHubWrite(messages);
+
+  const calCtx: ToolCtx = {
     api: token ? googleCalendarApi(token) : null,
     nowLocal: `${t.date}T${t.time}`,
-    confirmed: userConfirmed(messages),
-    userText,                                                   // só o que o CHEFE falou (nunca texto de evento)
-    lastAssistant: before?.role === "assistant" ? before.content : "",
-    writeIntent: wantsCalendarWrite(messages),
+    confirmed, userText, lastAssistant,                         // userText: só o que o CHEFE falou (nunca texto de evento)
+    writeIntent: calWrite,
     state: { destructive: 0 },
   };
+  const hubCtx: MyHubCtx = {
+    api: myHubWriteConfigured() ? { register: myHubRegistrar, undo: myHubDesfazer } : null,
+    writeIntent: hubWrite, undoIntent: wantsMyHubUndo(messages),
+    confirmed, lastAssistant, undo: undoIn, nowMs: Date.now(),
+    state: { writes: 0, seen: [] },
+  };
+
   let needsLogin = false;
-  const result = await runToolLoop({
-    messages: [{ role: "system", content: promptFor("full", memories, myhub, true) }, ...messages] as LoopMsg[],
+  let acted = false;
+  const tools = [...(sets.calendar ? CALENDAR_TOOLS : []), ...(sets.myhub ? MYHUB_TOOLS : [])];
+  const system = promptFor("full", memories, myhub, sets);
+
+  const loop = (extra: LoopMsg[] = []) => runToolLoop({
+    messages: [{ role: "system", content: system }, ...messages, ...extra] as LoopMsg[],
     complete: async (msgs) => {
-      const c = await groqComplete(apiKey, { messages: msgs, tools: CALENDAR_TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 700 } as never);
+      const c = await groqComplete(apiKey, { messages: msgs, tools, tool_choice: "auto", temperature: 0.3, max_tokens: 700 } as never);
       return { content: c.content, toolCalls: c.toolCalls };
     },
     finalize: async (msgs) => {
       const c = await groqComplete(apiKey, {
-        messages: [...msgs, { role: "system", content: "Pare de usar ferramentas. Em uma frase curta e falada, diga ao chefe o que já foi feito na agenda e o que ficou faltando." }] as never,
+        messages: [...msgs, { role: "system", content: "Pare de usar ferramentas. Em uma frase curta e falada, diga ao chefe o que já foi feito e o que ficou faltando." }] as never,
         temperature: 0.3, max_tokens: 300,
       } as never);
       return c.content;
     },
     execute: async (name, args) => {
       try {
-        const r = await executeCalendarTool(name, args, ctx);
+        const r = name.startsWith("my_hub_") ? await executeMyHubTool(name, args, hubCtx) : await executeCalendarTool(name, args, calCtx);
         if ((r as { needsLogin?: boolean })?.needsLogin) needsLogin = true;
+        if (WRITE_DONE.has((r as { status?: string })?.status ?? "")) acted = true;
         return r;
       } catch (e) {
         if (e instanceof GoogleApiError && e.status === 401) { needsLogin = true; return { needsLogin: true, error: "A sessão do Google expirou." }; }
@@ -70,12 +109,30 @@ async function replyWithCalendar(req: NextRequest, apiKey: string, messages: Msg
       }
     },
   });
-  const acted = result.calls.some((c) => c.ok && /^(create|update|delete)_event$/.test(c.name));
-  let text = result.text || (result.hitLimit
-    ? (acted ? "Fiz parte do pedido na agenda, mas não consegui terminar. Confere lá, chefe." : "Não consegui concluir isso na agenda agora, chefe.")
-    : "");
+
+  let result = await loop();
+  const calls = [...result.calls];
+  let steps = result.steps;
+  let text = result.text;
+
+  // Rede de proteção: disse que registrou/marcou/cancelou, o chefe pediu escrita e nada foi feito. Refaz uma vez.
+  if (!acted && (calWrite || hubWrite) && claimsWrite(text)) {
+    result = await loop([{ role: "assistant", content: text }, { role: "user", content: CORRECTION }]);
+    calls.push(...result.calls);
+    steps += result.steps;
+    text = result.text;
+    if (!acted && claimsWrite(text)) text = "Não consegui concluir isso agora, chefe.";   // nunca dizer que fez sem ter feito
+  }
+
+  if (!text && result.hitLimit) {
+    text = acted ? "Fiz parte do pedido, mas não consegui terminar. Confere lá, chefe." : "Não consegui concluir isso agora, chefe.";
+  }
   if (detectNeedTools(text) === "yes") text = "Não consegui fazer isso agora, chefe.";   // o marcador interno nunca chega ao chefe
-  return { text, needsLogin, steps: result.steps, acted, tools: result.calls.map((c) => (c.ok ? c.name : `${c.name}:erro`)) };
+  return {
+    text, needsLogin, acted, steps,
+    tools: calls.map((c) => (c.ok ? c.name : `${c.name}:erro`)),
+    undo: hubCtx.state.undone ? ("clear" as const) : hubCtx.state.undo ?? null,
+  };
 }
 
 // Cache memórias por 5 min para não bater no Supabase a cada mensagem
@@ -134,7 +191,7 @@ async function openReply(apiKey: string, messages: Msg[], mode: PromptMode, memo
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, stream, full: forceFull } = await req.json();
+    const { messages, stream, full: forceFull, undo: undoRaw } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Payload inválido: messages é obrigatório." }, { status: 400 });
@@ -194,34 +251,45 @@ export async function POST(req: NextRequest) {
     let retried = false;
     let needsGoogleLogin = false;
     let tools: string[] = [];
-    let acted = false;      // alguma ferramenta de ESCRITA (criar/remarcar/cancelar) executou com sucesso
+    let acted = false;      // alguma ferramenta de ESCRITA executou com sucesso (agenda ou My Hub)
+    let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
-    const viaCalendar = async () => {
-      const r = await replyWithCalendar(req, apiKey, messages, memories);
+    const hubOn = myHubWriteConfigured();
+    const wanted: ToolSets = { calendar: wantsCalendar(messages), myhub: hubOn && (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) };
+    const everything: ToolSets = { calendar: true, myhub: hubOn };
+    const viaTools = async (sets: ToolSets) => {
+      const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
       needsGoogleLogin = r.needsLogin;
       tools = r.tools;
       acted = r.acted;
       steps = r.steps;
+      undoOut = r.undo;
       return r.text;
     };
-    // Pedido de agenda: o prompt completo vai junto com as ferramentas do Calendar. (`full` do cliente só força o prompt
-    // completo; não liga as ferramentas da agenda por si: o registro do My Hub, por exemplo, não precisa delas.)
-    if (mode === "full" && wantsCalendar(messages)) {
-      reply = await viaCalendar();
+    // Pedido de agenda ou de registro no My Hub: o prompt completo vai junto com as ferramentas do que foi pedido.
+    // (`full` do cliente só força o prompt completo; não liga ferramentas por si.)
+    if (mode === "full" && (wanted.calendar || wanted.myhub)) {
+      reply = await viaTools(wanted);
     } else {
       reply = await run(mode, myhub);
-      // O modelo sem as ferramentas pediu [NEEDTOOLS] (conversa -> completo, ou completo sem agenda -> com agenda).
       if (detectNeedTools(reply) === "yes") {
+        // O modelo sem ferramentas pediu [NEEDTOOLS]: refaz com todas.
         retried = true;
         usedMode = "full";
-        reply = await viaCalendar();
+        reply = await viaTools(everything);
+      } else if (claimsWrite(reply) && (wantsCalendarWrite(messages) || wantsMyHubWrite(messages))) {
+        // Disse que registrou/marcou sem ferramenta nenhuma: nada foi feito. Refaz com todas.
+        retried = true;
+        usedMode = "full";
+        reply = await viaTools(everything);
       }
     }
     logMetric({ mode: usedMode, stream: false, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
     return NextResponse.json({
       reply,
       ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}),
-      ...(acted ? { usedTools: true } : {}),              // a agenda JÁ foi alterada: o cliente não duvida da resposta nem refaz o registro do My Hub
+      ...(acted ? { usedTools: true } : {}),               // algo JÁ foi gravado: o cliente não duvida da resposta
+      ...(undoOut === "clear" ? { undoCleared: true } : undoOut ? { undo: undoOut } : {}),   // o navegador guarda o caminho de desfazer
     }, { headers: { "x-beto-model": workingModel() ?? "" } });
   } catch (error: unknown) {
     console.error("[Beto API] Erro:", error);

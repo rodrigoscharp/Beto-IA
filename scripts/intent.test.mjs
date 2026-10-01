@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite } from "../lib/intent.ts";
+import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite } from "../lib/intent.ts";
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -219,5 +219,62 @@ test("criar, apagar e renomear evento também são pedidos de agenda (sem depend
   }
   for (const t of ["coloca uma música do Queen", "cria uma função em typescript", "apaga o histórico da conversa", "bota fé que vai dar certo"]) {
     assert.equal(wantsCalendar([u(t)]), false, t);
+  }
+});
+
+/* ── My Hub ─────────────────────────────────────────────────────────────── */
+
+test("wantsMyHubWrite: pedidos de registro de gasto, receita, hábito e tarefa", () => {
+  for (const t of ["gastei 45 no mercado", "paguei 120 reais de luz", "recebi 2 mil de freelance", "comprei uma mochila por 300", "bebi 500 ml de água",
+    "treinei hoje de manhã", "estudei 30 minutos de inglês", "anota que eu gastei 20 de uber", "cria uma tarefa para ligar pro contador",
+    "adiciona um gasto de 50 na farmácia", "registra a receita de 1500 do cliente", "lança 80 de gasolina"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), true, t);
+  }
+});
+
+test("wantsMyHubWrite: conversa e consulta não registram nada", () => {
+  for (const t of ["quanto eu gastei esse mês", "como estão meus hábitos", "recebi uma ligação do João", "paguei caro nesse almoço mas valeu a pena",
+    "me explica como funciona um orçamento", "qual meu saldo", "o que tenho de tarefas"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), false, t);
+  }
+});
+
+test("wantsMyHubWrite: o 'sim' a uma pergunta de valor conta; a outra pergunta qualquer não", () => {
+  assert.equal(wantsMyHubWrite([ask("Registro uma despesa de R$ 1.500,00 em Mercado?"), u("sim")]), true);
+  assert.equal(wantsMyHubWrite([ask("Quer o briefing?"), u("sim")]), false);
+  assert.equal(wantsMyHubWrite([ask("Cancelo a reunião com o João amanhã às 15h?"), u("sim")]), false);
+});
+
+test("wantsMyHubUndo: desfazer o último registro", () => {
+  for (const t of ["desfaz", "desfaz isso por favor", "errei, desfaz o último", "foi engano", "cancela isso", "volta atrás nesse registro"]) {
+    assert.equal(wantsMyHubUndo([u(t)]), true, t);
+  }
+  for (const t of ["não desfaz nada", "como foi meu dia", "desfazer a mala é chato"]) {
+    assert.equal(wantsMyHubUndo([u(t)]), t === "desfazer a mala é chato" ? true : false, t);
+  }
+});
+
+test("claimsWrite: o texto diz que registrou/marcou/cancelou", () => {
+  for (const t of ["Anotado, chefe.", "Registrei o gasto.", "Lancei no My Hub", "Marquei a reunião.", "Cancelei o almoço", "Criei o evento", "Adicionei na lista"]) {
+    assert.equal(claimsWrite(t), true, t);
+  }
+  for (const t of ["Quer que eu anote?", "Não consegui registrar", "Posso marcar amanhã", "Vou verificar"]) {
+    assert.equal(claimsWrite(t), false, t);
+  }
+});
+
+test("registrar no My Hub e desfazer nunca vão pelo streaming de conversa", () => {
+  for (const t of ["almocei por aqui hoje e gastei 35", "foi engano aquilo ali", "desfaz esse último registro por favor", "bebi bastante água hoje cedo"]) {
+    assert.equal(needsTools([u(t)]), true, t);
+  }
+});
+
+test("consulta com número ('quanto gastei em 2025?') NÃO é pedido de registro no My Hub", () => {
+  for (const t of ["quanto gastei em 2025?", "quanto eu gastei em setembro de 2025", "qual o valor que gastei em 2024", "como estou gastando 50% da renda?",
+    "quanto recebi de freelance em 2026", "onde eu paguei 300 reais mês passado?", "quanto eu gastei esse mês injetado2"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), false, t);
+  }
+  for (const t of ["gastei 45 no mercado", "paguei 300 reais de luz", "anota 20 de uber", "registra 1500 de freela", "gastei 45,50 no café"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), true, t);
   }
 });
