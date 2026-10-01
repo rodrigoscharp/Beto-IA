@@ -98,11 +98,11 @@ test("confirmação do valor: só vale se o 'sim' veio depois de uma pergunta qu
   const naoConf = await run("my_hub_register", gasto(1500), ctx(api, { confirmed: false, lastAssistant: "registro uma despesa de R$ 1.500,00 em mercado?" }));
   assert.equal(naoConf.status, "needs_confirmation");
   assert.equal(api.calls.length, 0);
-  for (const frase of ["Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?", "registro uma despesa de 1500 reais, mercado da semana, em mercado?"]) {
+  for (const frase of ["Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?", "Chefe, registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?"]) {
     const ok = await run("my_hub_register", gasto(1500), ctx(fakeApi(), { confirmed: true, lastAssistant: frase }));
     assert.equal(ok.status, "registered", frase);
   }
-  for (const frase of ["Anoto 1.500 no mercado?", "Registro uma despesa de R$ 1.500,00 em Mercado?"]) {
+  for (const frase of ["Anoto 1.500 no mercado?", "Registro uma despesa de R$ 1.500,00 em Mercado?", "registro uma despesa de 1500 reais, mercado da semana, em mercado?"]) {
     const nao = await run("my_hub_register", gasto(1500), ctx(fakeApi(), { confirmed: true, lastAssistant: frase }));
     assert.equal(nao.status, "needs_confirmation", `${frase}: faltou o tipo ou a descrição`);
   }
@@ -230,6 +230,136 @@ test("My Hub não respondeu a tempo (pode ter gravado): não duplica e manda con
   assert.match(r.message, /conferir/i);
   assert.equal(c.state.uncertain, true);
   const again = await run("my_hub_register", gasto(45), c);
-  assert.match(again.error ?? "", /já foi/i);
+  assert.match(again.error ?? "", /(já foi|incerto)/i);
   assert.equal(api.calls.filter((x) => x[0] === "register").length, 1);
+});
+
+/* ── Segunda revisão do My Hub ──────────────────────────────────────────── */
+
+const Q = "Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?";
+const reg = (entrada, c, acao = "registrarTransacao") => run("my_hub_register", { acao, entrada }, c);
+
+test("a trava varre a entrada INTEIRA: chaves desconhecidas, aninhadas e em arrays", async () => {
+  for (const entrada of [
+    { tipo: "despesa", valorTotal: 5000, descricao: "x" },
+    { tipo: "despesa", custo: "5000", descricao: "x" },
+    { tipo: "despesa", itens: [{ nome: "a", valor: 5000 }], descricao: "x" },
+    { tipo: "despesa", detalhes: { preco: 5000 }, descricao: "x" },
+    { tipo: "despesa", valorParcela: 2000, parcelas: 3, descricao: "x" },
+    { tipo: "despesa", Valor: "5.000", descricao: "x" },
+    { tipo: "despesa", descricao: "x", mistério: 5000 },
+  ]) {
+    const api = fakeApi();
+    const r = await reg(entrada, ctx(api));
+    assert.equal(r.status, "needs_confirmation", JSON.stringify(entrada));
+    assert.equal(api.calls.length, 0, JSON.stringify(entrada));
+  }
+});
+
+test("campos seguros com números altos não pedem confirmação (água, minutos, peso)", async () => {
+  const api = fakeApi();
+  assert.equal((await reg({ habito: "Beber água", quantidade: 2500 }, ctx(api), "registrarCheckinHabito")).status, "registered");
+  assert.equal((await reg({ atividade: "Corrida", minutos: 1500, calorias: 3000 }, ctx(api), "registrarAtividade")).status, "registered");
+});
+
+test("cada campo de valor é normalizado NA MESMA CHAVE e vai como número (valor não vira valorEmReais fora de transação)", async () => {
+  const api = fakeApi();
+  await reg({ meta: "Viagem", valor: "500" }, ctx(api), "aportarMeta");
+  assert.deepEqual(api.calls[0][2], { meta: "Viagem", valor: 500 });
+  const api2 = fakeApi();
+  await reg({ tipo: "despesa", valorEmCentavos: "150.000", descricao: "x" }, ctx(api2, { confirmed: true, lastAssistant: "Registro uma despesa de R$ 1.500,00 (x)?" }));
+  assert.equal(api2.calls[0][2].valorEmCentavos, 150000, "centavos como inteiro");
+  const api3 = fakeApi();
+  await reg({ tipo: "despesa", valorEmReais: "45,505", descricao: "x" }, ctx(api3));
+  assert.match((await reg({ tipo: "despesa", valorEmReais: "45,505", descricao: "x" }, ctx(fakeApi()))).error ?? "", /valor/i);
+  const api4 = fakeApi();
+  await reg({ tipo: "despesa", valorEmReais: 45.123, descricao: "x" }, ctx(api4));
+  assert.equal(api4.calls[0][2].valorEmReais, 45.12, "arredonda para 2 casas");
+});
+
+test("dois campos de valor com números diferentes são RECUSADOS (o My Hub poderia usar o menor)", async () => {
+  const api = fakeApi();
+  const r = await reg({ tipo: "despesa", valorEmCentavos: 50000, valorEmReais: 5, descricao: "x" }, ctx(api));
+  assert.match(r.error ?? "", /conflit/i);
+  assert.equal(api.calls.length, 0);
+  assert.equal((await reg({ tipo: "despesa", valorEmCentavos: 500, valorEmReais: 5, descricao: "x" }, ctx(api))).status, "registered", "mesmo valor nos dois: ok");
+});
+
+test("o tipo é o MESMO que o My Hub vai usar: 'credito' vira receita; 'transferencia' não passa em valor alto", async () => {
+  const api = fakeApi();
+  const cred = await reg({ tipo: "credito", valorEmReais: 1500, descricao: "Mercado da semana", categoria: "Mercado" }, ctx(api, { confirmed: true, lastAssistant: Q }));
+  assert.equal(cred.status, "needs_confirmation", "perguntou DESPESA; o My Hub gravaria RECEITA");
+  assert.match(cred.ask_with, /receita/i);
+  const transf = await reg({ tipo: "transferencia", valorEmReais: 1500, descricao: "x" }, ctx(api));
+  assert.match(transf.error ?? "", /tipo/i);
+  assert.equal(api.calls.length, 0);
+});
+
+test("o 'sim' é preso à frase EXATA: ação, conta e data também precisam ter sido ditas", async () => {
+  const base = { tipo: "despesa", valorEmReais: 1500, descricao: "Mercado da semana", categoria: "Mercado" };
+  assert.equal((await reg({ ...base, conta: "PJ" }, ctx(fakeApi(), { confirmed: true, lastAssistant: Q }))).status, "needs_confirmation", "conta não citada");
+  assert.equal((await reg({ ...base, data: "2026-09-01" }, ctx(fakeApi(), { confirmed: true, lastAssistant: Q }))).status, "needs_confirmation", "data não citada");
+  assert.equal((await reg({ valorEmReais: 1500 }, ctx(fakeApi(), { confirmed: true, lastAssistant: Q }), "pagarFatura")).status, "needs_confirmation", "outra ação");
+  const r = await reg({ ...base, conta: "PJ" }, ctx(fakeApi()));
+  assert.match(r.ask_with, /conta PJ/);
+  const ok = await reg({ ...base, conta: "PJ" }, ctx(fakeApi(), { confirmed: true, lastAssistant: r.ask_with }));
+  assert.equal(ok.status, "registered");
+});
+
+test("sem descrição nem categoria na entrada, a pergunta com elas não confirma (a frase precisa ser a mesma)", async () => {
+  const r = await reg({ tipo: "despesa", valorEmReais: 1500 }, ctx(fakeApi(), { confirmed: true, lastAssistant: Q }));
+  assert.equal(r.status, "needs_confirmation");
+});
+
+test("palavra inteira: descrição 'Cafe' não confirma uma pergunta sobre 'Cafeteria'", async () => {
+  const q = "Registro uma despesa de R$ 1.500,00 (Cafeteria) em Mercado?";
+  const r = await reg({ tipo: "despesa", valorEmReais: 1500, descricao: "Cafe", categoria: "Mercado" }, ctx(fakeApi(), { confirmed: true, lastAssistant: q }));
+  assert.equal(r.status, "needs_confirmation");
+});
+
+test("descrição com ponto ('Dr. Silva') não quebra a pergunta em duas frases", async () => {
+  const entrada = { tipo: "despesa", valorEmReais: 1500, descricao: "Consulta Dr. Silva", categoria: "Saúde" };
+  const r = await reg(entrada, ctx(fakeApi()));
+  assert.equal(r.status, "needs_confirmation");
+  const ok = await reg(entrada, ctx(fakeApi(), { confirmed: true, lastAssistant: r.ask_with }));
+  assert.equal(ok.status, "registered");
+});
+
+test("anti-duplicata sobre a entrada NORMALIZADA: 45, '45' e 'valor: 45' são o mesmo registro", async () => {
+  const api = fakeApi(); const c = ctx(api);
+  await reg({ tipo: "despesa", valorEmReais: 45, descricao: "x" }, c);
+  assert.match((await reg({ tipo: "despesa", valorEmReais: "45", descricao: "x" }, c)).error ?? "", /já foi/i);
+  assert.match((await reg({ tipo: "despesa", valor: 45, descricao: "x" }, c)).error ?? "", /já foi/i);
+  assert.equal(api.calls.filter((x) => x[0] === "register").length, 1);
+});
+
+test("depois de um registro INCERTO nenhum outro registro na mesma mensagem (nem com um campo a mais)", async () => {
+  const api = fakeApi({ registerResult: { ok: false, erro: "Não consegui falar com o My Hub agora.", incerto: true } });
+  const c = ctx(api);
+  await reg({ tipo: "despesa", valorEmReais: 45, descricao: "x" }, c);
+  const again = await reg({ tipo: "despesa", valorEmReais: 45, descricao: "x", conta: "Carteira" }, c);
+  assert.match(again.error ?? "", /incerto/i);
+  assert.equal(api.calls.filter((x) => x[0] === "register").length, 1);
+});
+
+test("desfazer duas vezes na mesma mensagem não cai no registro antigo do navegador", async () => {
+  const api = fakeApi(); const c = ctx(api, { undoIntent: true, undo: { path: "/antigo", resumo: "antigo", ts: NOW - 60_000 } });
+  await reg({ tipo: "despesa", valorEmReais: 60, descricao: "x" }, c);
+  assert.equal((await run("my_hub_undo", {}, c)).status, "undone");
+  assert.equal((await run("my_hub_undo", {}, c)).status, "nothing_to_undo");
+  assert.deepEqual(api.calls.filter((x) => x[0] === "undo"), [["undo", "tx/1"]]);
+});
+
+test("valor absurdo é recusado e não quebra a frase de confirmação", async () => {
+  for (const v of [1e21, 1e9, "99999999999"]) {
+    const r = await reg({ tipo: "despesa", valorEmReais: v, descricao: "x" }, ctx(fakeApi()));
+    assert.match(r.error ?? "", /valor/i, String(v));
+  }
+});
+
+test("o 'registro alto liberado' só conta se o My Hub realmente registrou (recusa não consome o 'sim')", async () => {
+  const api = fakeApi({ registerResult: { ok: false, erro: "Qual conta: Carteira ou PJ?" } });
+  const c = ctx(api, { confirmed: true, lastAssistant: Q });
+  assert.equal((await reg({ tipo: "despesa", valorEmReais: 1500, descricao: "Mercado da semana", categoria: "Mercado" }, c)).status, "failed");
+  assert.notEqual(c.state.highDone, true);
 });

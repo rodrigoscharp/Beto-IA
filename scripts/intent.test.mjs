@@ -333,3 +333,44 @@ test("claimsWrite entende negação, pergunta e fato anterior (sem empurrar o mo
     assert.equal(claimsWrite(t), true, t);
   }
 });
+
+/* ── Revisão do My Hub (lote 3) ─────────────────────────────────────────── */
+
+test("'como', 'quando' e 'saber' no MEIO da frase não bloqueiam um registro legítimo", () => {
+  for (const t of ["gastei 45 no mercado quando fui ontem", "paguei 300 de luz como combinado", "gastei 80 de gasolina quando abasteci"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), true, t);
+  }
+  for (const t of ["como estão meus gastos de 2025", "quando foi que gastei 300 de luz", "quanto gastei em março com 50 reais"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), false, t);
+  }
+});
+
+test("negação antes do verbo: 'eu não gastei 45', 'não registra esse gasto de 45'", () => {
+  for (const t of ["eu não gastei 45 no mercado", "não registra esse gasto de 45", "nunca paguei 300 de luz", "não anota esse gasto de 20"]) {
+    assert.equal(wantsMyHubWrite([u(t)]), false, t);
+  }
+});
+
+test("resposta curta que NÃO completa dado: negativa, ou pergunta que não é de registro", () => {
+  assert.equal(wantsMyHubWrite([ask("Quer que eu registre?"), u("não")]), false);
+  assert.equal(wantsMyHubWrite([ask("Registro a despesa de R$ 45,00?"), u("não quero")]), false);
+  assert.equal(wantsMyHubWrite([ask("Quer que eu anote isso na sua memória?"), u("sim")]), false);
+  assert.equal(wantsMyHubWrite([ask("Você tem saldo de R$ 300 na conta. Algo mais?"), u("o de 45")]), false);
+  assert.equal(wantsMyHubWrite([ask("Qual conta: Carteira ou PJ?"), u("PJ")]), true);
+});
+
+test("desfazer: qualquer 'não' antes do verbo cancela ('não precisa desfazer', 'não quero desfazer nada')", () => {
+  for (const t of ["não precisa desfazer", "não quero desfazer nada", "nao, deixa, não desfaz"]) {
+    assert.equal(wantsMyHubUndo([u(t)]), false, t);
+  }
+  assert.equal(wantsMyHubUndo([u("desfaz o último")]), true);
+});
+
+test("claimsWrite: 'Sem problema, anotei' e 'Não consegui, mas registrei a ideia' SÃO afirmações; negação colada ao verbo não", () => {
+  for (const t of ["Sem problema, anotei.", "Não consegui ver tudo, mas registrei a ideia.", "Beleza, marquei."]) {
+    assert.equal(claimsWrite(t), true, t);
+  }
+  for (const t of ["Não anotei.", "Ainda não registrei nada.", "Não o anotei por falta de valor.", "Nunca marquei isso."]) {
+    assert.equal(claimsWrite(t), false, t);
+  }
+});

@@ -101,7 +101,7 @@ export async function myHubRegistrar(acao: string, entrada: unknown): Promise<My
     // MYHUB_DEFAULT_ACCOUNT: conta usada quando ele não diz qual (evita perguntar "Carteira ou PJ?" toda vez).
     const dados = normalizarEntrada(acao, entrada, { conta: process.env.MYHUB_DEFAULT_ACCOUNT });
     const res = await postWrite("beto-acao", { acao, entrada: dados });
-    if (!res.ok) return { ok: false, erro: `O My Hub respondeu ${res.status}.`, ...(res.status >= 500 ? { incerto: true } : {}) };
+    if (!res.ok) return { ok: false, erro: `O My Hub respondeu ${res.status}.`, ...(res.status >= 500 || res.status === 408 ? { incerto: true } : {}) };
     const data = (await res.json()) as MyHubWriteResult;
     if (data.ok) invalidateMyHubContext();
     return data;

@@ -49,3 +49,17 @@ Saem do navegador: `execMyHub`, `askAboutFailure`, a leitura da tag `[MYHUB:…]
 - **Rede de proteção:** `claimsWrite` entende negação ("não registrei"), pergunta e fato anterior ("já está registrado"); não refaz quando o My Hub ficou incerto.
 - **Roteamento:** "gastei 45 no mercado?" (a voz põe "?") é registro; "quero saber se gastei…" e "toca a música que paguei 10 reais" não; resposta curta a uma pergunta de registro ("PJ", "foi 45") completa o dado que faltava; confirmar também com "pode registrar", "pode anotar", "pode lançar".
 - `[NEEDTOOLS]` dentro do laço liga todos os conjuntos de ferramentas; o caminho de desfazer vindo do navegador é validado (só ASCII visível, até 300 caracteres).
+
+## Segunda rodada de correções (mudança de estratégia na trava de valor)
+
+A segunda revisão mostrou que adivinhar quais chaves "parecem dinheiro" num catálogo de texto livre é uma corrida perdida. A trava mudou de estratégia:
+
+- **Varredura da entrada inteira**, em qualquer profundidade e dentro de arrays. Todo campo cuja chave parece valor (`valor`, `preco`, `total`, `custo`, `parcela`, `aporte`, `centavos`…, em qualquer caixa) é lido de forma estrita e normalizado **na mesma chave** como número (2 casas; centavos inteiros). Todo outro número acima de R$ 1.000 é tratado como dinheiro, **exceto** os campos seguros conhecidos (`quantidade`, `minutos`, `peso`, `calorias`, `parcelas`…).
+- **Campos de valor conflitantes** (números diferentes) são recusados; valor absurdo (acima de R$ 10 milhões) também. `NaN` e `Infinity` não escapam (cópia por `structuredClone`, não por JSON).
+- **O tipo vale o que o My Hub vai gravar:** a entrada passa pela mesma normalização do My Hub antes da trava ("credito" vira receita); em valor alto o tipo precisa ser despesa ou receita.
+- **O "sim" vale para a frase exata:** o servidor gera a frase (ação, valor, tipo, descrição, categoria, conta e data) e a última frase do Beto precisa **terminar** nela (pode ter palavras antes, "Chefe, registro…", nunca detalhe a mais depois). Descrição com "." ou "?" é limpa para não quebrar a frase.
+- **Anti-duplicata sobre a entrada normalizada**; depois de um registro **incerto** (timeout, HTTP 5xx ou 408), nenhum outro registro na mesma mensagem.
+- **Desfazer** duas vezes na mesma mensagem não cai no registro antigo do navegador.
+- **Registro alto liberado** só é consumido quando o My Hub realmente registra (recusa não gasta o "sim").
+- **Roteamento:** pergunta só vale como consulta quando a palavra interrogativa está no começo ("quanto gastei…"); "gastei 45 quando fui ontem" é registro. Negação antes do verbo ("não gastei", "não registra") não registra. Resposta curta só completa dado quando a última frase do Beto é pergunta de registro e a resposta não é negativa. `claimsWrite` só considera negação colada ao verbo ("não anotei"); "Sem problema, anotei" é afirmação.
+- **Rota:** o `[NEEDTOOLS]` com ferramentas só liga todos os conjuntos se **nenhuma** ferramenta executou (refazer depois de gravar duplicaria o registro).

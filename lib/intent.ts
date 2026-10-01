@@ -157,7 +157,15 @@ export function userConfirmed(messages: ChatMsg[]): boolean {
 
 const MONEY_VERB = /\b(gastei|paguei|comprei|recebi|ganhei|abasteci|almocei|jantei|depositei|transferi)\b/;
 const MONEY_CUE = /(^|\s|r\$)\d|\b(reais|real|conto|pila|mil|centavos)\b/;   // número solto (45, 1.500), não dígito dentro de palavra
-const QUESTION = /\b(quanto|quantos|quantas|qual|quais|como|onde|quando|por que|porque|saber|sera que|me diz|me fala|me conta)\b/;
+/* Pergunta de verdade: palavra interrogativa NO COMEÇO ("quanto gastei…", "como estão meus gastos…") ou um pedido de informação.
+   "gastei 45 quando fui ontem" e "paguei a luz como combinado" são registros: a palavra no meio da frase não conta. */
+const QUESTION_START = /^(quanto|quantos|quantas|qual|quais|como|onde|quando|por que|porque)\b/;
+const QUESTION_ANY = /\b(quero saber|queria saber|saber se|sera que|me diz|me fala|me conta)\b/;
+/** O verbo aparece negado ("eu não gastei", "não registra", "nunca paguei")? Negação até 2 palavras antes dele. */
+function negated(t: string, verb: RegExp): boolean {
+  const m = verb.exec(t);
+  return !!m && /\b(nao|nunca|jamais)\s+(?:\w+\s+){0,2}$/.test(t.slice(0, m.index));
+}
 const ACTIVITY_VERB = /\b(bebi|treinei|estudei|meditei|corri|caminhei|malhei|pedalei|nadei)\b/;
 const MUSIC = /\b(toca|tocar|toque|musica|spotify|playlist|album)\b/;
 const REGISTER_VERB = /\b(anota|anote|registra|registre|lanca|lance|adiciona|adicione|coloca|bota|marca|marque|cria|crie)\b/;
@@ -169,19 +177,21 @@ export function wantsMyHubWrite(messages: ChatMsg[]): boolean {
   if (!last) return false;
   const t = last.text;
   // Pergunta é consulta ("quanto gastei em 2025?"), nunca registro. (O "?" sozinho não decide: a voz põe "?" em tudo.)
-  const consulta = QUESTION.test(t);
+  const consulta = QUESTION_START.test(t.trim()) || QUESTION_ANY.test(t);
   if (!consulta && !MUSIC.test(t)) {
-    if (MONEY_VERB.test(t) && MONEY_CUE.test(t)) return true;
-    if (ACTIVITY_VERB.test(t)) return true;
-    if (REGISTER_VERB.test(t) && REGISTER_NOUN.test(t)) return true;
-    if (REGISTER_VERB.test(t) && MONEY_CUE.test(t) && !isCalendarTalk(t)) return true;
+    if (MONEY_VERB.test(t) && MONEY_CUE.test(t) && !negated(t, MONEY_VERB)) return true;
+    if (ACTIVITY_VERB.test(t) && !negated(t, ACTIVITY_VERB)) return true;
+    if (REGISTER_VERB.test(t) && REGISTER_NOUN.test(t) && !negated(t, REGISTER_VERB)) return true;
+    if (REGISTER_VERB.test(t) && MONEY_CUE.test(t) && !isCalendarTalk(t) && !negated(t, REGISTER_VERB)) return true;
   }
   const prev = messages[last.index - 1];
   if (prev && prev.role === "assistant") {
     const p = norm(prev.content);
     // Resposta curta a uma pergunta de registro do Beto ("Qual conta?" -> "PJ"): completa o dado que faltava.
-    if (words(t) <= 6 && p.slice(-220).includes("?") && /(registr|anot|lanc|conta|categoria|quanto foi|valor)/.test(p)
-        && !CALENDAR_QUESTION.test(p)) return true;
+    const lastSentence = p.split(/(?<=[.!?])\s+/).filter(Boolean).pop() ?? "";
+    if (words(t) <= 6 && lastSentence.endsWith("?")
+        && /(qual conta|em qual conta|qual categoria|em qual categoria|qual (o )?valor|qual foi o valor|quanto foi|registr|anot|lanc)/.test(lastSentence)
+        && !/(memoria|lembrar)/.test(lastSentence) && !/^(nao|negativo|deixa|esquece|cancela|melhor nao)\b/.test(t)) return true;
     // O "sim" a uma pergunta de valor ("Registro uma despesa de R$ 1.500?") também libera o registro.
     if (userConfirmed(messages) && /(r\$|reais|valor|conto|pila)/.test(p)) return true;
   }
@@ -193,7 +203,7 @@ export function wantsMyHubUndo(messages: ChatMsg[]): boolean {
   const last = lastUserText(messages);
   if (!last) return false;
   const t = last.text;
-  if (/\bnao (desfaz|desfaca|desfazer)\b/.test(t)) return false;
+  if (/\bnao\b[^.!?]*\b(desfaz|desfaca|desfazer)\b/.test(t)) return false;
   if (/\b(desfaz|desfaca|desfazer|desfiz)\b/.test(t)) return true;
   if (/\bapaga (esse|o ultimo) (registro|gasto|lancamento)\b/.test(t)) return true;
   const prev = messages[last.index - 1];
@@ -208,7 +218,7 @@ export function claimsWrite(text: string): boolean {
   for (const sentence of norm(text).split(/(?<=[.!?])\s+/)) {
     const m = CLAIM.exec(sentence);
     if (!m || sentence.trim().endsWith("?")) continue;
-    if (/\b(nao|nunca|sem)\b/.test(sentence.slice(0, m.index))) continue;
+    if (/\b(nao|nunca|jamais)\s+(?:(?:o|a|os|as|ainda)\s+)?$/.test(sentence.slice(0, m.index))) continue;   // "não anotei", "ainda não registrei"
     if (/\bja (esta|estava|foi|ficou)\b/.test(sentence)) continue;
     return true;
   }
