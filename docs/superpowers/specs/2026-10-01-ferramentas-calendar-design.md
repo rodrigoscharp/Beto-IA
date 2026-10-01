@@ -68,3 +68,13 @@ Trocar o jeito frágil de agir (o modelo escreve `[CALENDAR:{…}]` no meio do t
 - **Limite de passos:** ao bater no limite, uma última chamada sem ferramentas resume o que foi feito; se falhar, a frase diz que parte foi feita e pede para conferir.
 - **Robustez:** horário no passado recusado; "agora" arredondado para :00/:30 no horário livre; evento sem horário válido não derruba a listagem; cooldown de modelo separado para ferramentas; `[NEEDTOOLS]` nunca é falado; caminho antigo `[CALENDAR:]` e rota `/api/calendar/command` removidos.
 - **Adiado:** deslocamento fixo -03:00 (se o horário de verão voltar); paginação de mais de 100 eventos na listagem.
+
+## Correções da segunda revisão
+
+- **Confirmação presa ao evento certo, com dia e horário:** a fala do Beto antes do "sim" precisa citar o título (palavra inteira, nunca substring), o horário (15h, 15:30, 09h, meio-dia, 3 da tarde, 15 e meia) e, para apagar/remarcar com convidados, o dia ("amanhã", "2 de outubro", "dia 2", "2/10", ou o dia da semana só se for esta semana). Por isso um "sim" a "cancelo a reunião semanal desta sexta, 2 de outubro, às 15h?" não apaga a ocorrência do dia 9.
+- **`ask_with`:** a resposta `needs_confirmation` traz a frase pronta (título, dia e horário); o modelo a repete e a confirmação passa.
+- **`ignore_conflicts`** usa a mesma checagem (título por palavra inteira e horário do evento em conflito); título que some depois de limpar a pontuação nunca é aceito.
+- **Perguntas de marcar, agendar, criar, colocar e deletar** valem como confirmação (antes só cancelar/remarcar valiam); pergunta de alternativa ("cancelo ou remarco?") nunca confirma.
+- **Roteamento:** criar, apagar, excluir, renomear e "bota" junto de evento ou horário também chamam o Calendar.
+- **Limite de alterações:** no máximo 2 remarcações/renomeações por mensagem, além de 1 ação destrutiva.
+- **`usedTools`** só quando uma ferramenta de escrita executou com sucesso (leitura ou erro não pulam o retry do My Hub).

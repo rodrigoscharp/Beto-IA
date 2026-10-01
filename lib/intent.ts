@@ -89,6 +89,7 @@ function isCalendarTalk(text: string): boolean {
   if (/\b(marca|marcar|marque|marcou)\b/.test(text) && either) return true;
   if (/\bcancel\w*\b/.test(text) && either) return true;
   if (re(MOVE_VERB).test(text) && either) return true;
+  if (WRITE_VERB.test(text) && either) return true;           // cria, bota, apaga, exclui, renomeia... junto de evento ou horário
   if (/\blivres?\b/.test(text) && dayTime) return true;
   if (/\b(tenho|temos)\b/.test(text) && (/\b(compromisso\w*|reuniao|reunioes|evento\w*|call|consulta)\b/.test(text) || (/\bo que\b/.test(text) && dayTime))) return true;
   if (/\b(disponivel|disponibilidade|ocupad[oa])\b/.test(text) && dayTime) return true;
@@ -96,7 +97,7 @@ function isCalendarTalk(text: string): boolean {
 }
 
 /** Pergunta do Beto sobre uma mudança na agenda (cancelar, remarcar, conflito): a resposta curta que vem depois é do Calendar. */
-const CALENDAR_QUESTION = /(cancel|apag|remov|exclu|remarc|mov|alter|mud|troc|marc|conflit|agenda|reuni|evento|compromisso)/;
+const CALENDAR_QUESTION = /(cancel|apag|delet|remov|exclu|remarc|remarq|mov|alter|mud|troc|marc|marq|agend|cri|coloc|conflit|reuni|evento|compromisso)/;
 
 function lastUserText(messages: ChatMsg[]): { text: string; index: number } | null {
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "user") return { text: norm(messages[i].content), index: i };
@@ -135,7 +136,7 @@ const CONFIRM_TOKENS = new Set(["sim", "pode", "confirma", "confirmo", "confirma
   "fechado", "certeza", "com", "positivo", "faz", "manda", "ver", "vai", "la", "por", "favor", "chefe", "beto", "ser", "cancelar", "apagar",
   "remarcar", "mudar", "marcar"]);
 const STRONG_YES = new Set(["sim", "pode", "confirma", "confirmo", "confirmado", "claro", "isso", "ok", "beleza", "aham", "uhum", "fechado", "positivo", "faz", "manda", "vai"]);
-const CONFIRM_QUESTION = /(cancel|apag|remov|exclu|remarc|mov|alter|mud|troc|marc|conflit|confirm)/;
+const CONFIRM_QUESTION = /(cancel|apag|delet|remov|exclu|remarc|remarq|mov|alter|mud|troc|marc|marq|agend|cri|coloc|conflit|confirm)/;
 
 export function userConfirmed(messages: ChatMsg[]): boolean {
   const last = lastUserText(messages);
@@ -147,5 +148,6 @@ export function userConfirmed(messages: ChatMsg[]): boolean {
   if (!prev || prev.role !== "assistant") return false;
   const sentences = norm(prev.content).split(/(?<=[.!?])\s+/).filter(Boolean);
   const question = sentences[sentences.length - 1] ?? "";
-  return question.endsWith("?") && CONFIRM_QUESTION.test(question);
+  // Pergunta de alternativa ("cancelo ou remarco?", "cancelo? Ou prefere mudar?"): um "sim" é ambíguo e não confirma nada.
+  return question.endsWith("?") && CONFIRM_QUESTION.test(question) && !/\bou\b/.test(question);
 }

@@ -195,3 +195,29 @@ test("wantsCalendarWrite: só liberar escrita quando o chefe pediu para criar/mu
   assert.equal(wantsCalendarWrite([ask("Cancelo a reunião com o João amanhã às 15h?"), u("sim")]), true, "confirmação conta");
   assert.equal(wantsCalendarWrite([ask("E você, como tá?"), u("sim")]), false);
 });
+
+/* ── Segunda revisão ────────────────────────────────────────────────────── */
+
+test("confirmação vale também para perguntas de marcar, agendar, criar, colocar e deletar", () => {
+  for (const q of ["Quer que eu marque a reunião amanhã às 15h?", "Posso agendar o dentista sexta às 10h?", "Crio o evento amanhã às 9h?",
+    "Coloco na agenda?", "Tem conflito com o Almoço. Quer que eu marque mesmo assim?", "Deleto o evento Almoço de amanhã?", "Quer que eu remarque a call para sexta?"]) {
+    assert.equal(userConfirmed([ask(q), u("sim")]), true, q);
+    assert.equal(wantsCalendarWrite([ask(q), u("sim")]), true, q);
+  }
+});
+
+test("pergunta de alternativa ('X? Ou prefere Y?') não é confirmação de nada", () => {
+  assert.equal(userConfirmed([ask("Cancelo a reunião com o João? Ou prefere mudar o horário?"), u("sim")]), false);
+  assert.equal(userConfirmed([ask("Cancelo ou remarco a reunião do João amanhã às 15h?"), u("sim")]), false);
+});
+
+test("criar, apagar e renomear evento também são pedidos de agenda (sem depender do [NEEDTOOLS])", () => {
+  for (const t of ["cria um evento amanhã às 15h", "bota uma call amanhã às 9", "adiciona reunião com João sexta", "apaga o evento das 15h",
+    "exclui o compromisso de hoje", "renomeia a reunião de amanhã", "coloca um almoço com a Ana na quinta"]) {
+    assert.equal(wantsCalendar([u(t)]), true, t);
+    assert.equal(wantsCalendarWrite([u(t)]), true, t);
+  }
+  for (const t of ["coloca uma música do Queen", "cria uma função em typescript", "apaga o histórico da conversa", "bota fé que vai dar certo"]) {
+    assert.equal(wantsCalendar([u(t)]), false, t);
+  }
+});

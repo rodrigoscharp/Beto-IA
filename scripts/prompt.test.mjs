@@ -26,7 +26,7 @@ test("agenda não usa mais tag: o bloco [CALENDAR:…] saiu e a agenda é por fe
 test("com calendar: o guia das ferramentas entra, com data de hoje, confirmação e regra de voz", () => {
   const p = buildSystemPrompt({ ...input, calendar: true }, "full");
   for (const k of ["list_events", "find_free_slots", "create_event", "update_event", "delete_event", "needs_confirmation",
-    "ignore_conflicts", "2026-10-01", "quinta-feira, 1 de outubro", "09:00"]) assert.ok(p.includes(k), k);
+    "ignore_conflicts", "ask_with", "2026-10-01", "quinta-feira, 1 de outubro", "09:00"]) assert.ok(p.includes(k), k);
   assert.ok(p.length > full.length);
   assert.ok(!chat.includes("list_events"), "modo conversa nunca leva o guia");
 });

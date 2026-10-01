@@ -34,7 +34,7 @@ export interface ToolCtx {
   userText: string;              // tudo o que o CHEFE falou nesta conversa (só ele; nunca texto de evento ou do modelo)
   lastAssistant: string;         // a fala do Beto logo antes do "sim" do chefe (a pergunta de confirmação)
   writeIntent: boolean;          // o chefe pediu para criar, mudar ou cancelar (wantsCalendarWrite)
-  state: { destructive: number };// ações destrutivas já executadas nesta requisição
+  state: { destructive: number; updates?: number };   // ações já executadas nesta requisição (destrutivas; remarcações/alterações)
 }
 
 export interface ToolDef {
@@ -91,19 +91,50 @@ const brief = (e: Ev) => ({
 /* minúsculo, sem acento nem pontuação */
 const plain = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
+const MONTHS_PLAIN = ["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const WEEKDAYS_PLAIN = ["domingo", "segunda", "terca", "quarta", "quinta", "sexta", "sabado"];
+const wordIn = (text: string, w: string) => new RegExp(`(^| )${w}( |$)`).test(text);
+
+/** O horário do evento aparece na fala? 15h, 15 horas, 15:30, 15h30, 09h, meio-dia, 3 da tarde, 15 e meia. */
 function hourMentioned(text: string, start: string): boolean {
-  const hh = Number(start.slice(11, 13)), mm = start.slice(14, 16);
-  const re = mm === "00"
-    ? new RegExp(`(^| )${hh} ?(h|horas?)( |$)`)
-    : new RegExp(`(^| )${hh} ?h ?${mm}( |$)|(^| )${hh} ${mm}( |$)`);
-  return re.test(text);
+  const hh = Number(start.slice(11, 13)), mm = Number(start.slice(14, 16));
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  const hs = `0?${hh}`, part = "(da )?(manha|tarde|noite|madrugada)";
+  const alts: string[] = [];
+  if (mm === 0) {
+    alts.push(`${hs} ?(h|horas?)`, `${hs} 00`, `${h12} ${part}`);
+    if (hh === 12) alts.push("meio dia");
+    if (hh === 0) alts.push("meia noite");
+  } else {
+    const m2 = String(mm).padStart(2, "0");
+    alts.push(`${hs} ?h ?${m2}`, `${hs} ${m2}`);
+    if (mm === 30) alts.push(`${hs} ?(h|horas?)? e meia`, `${h12} e meia ${part}`);
+  }
+  return new RegExp(`(^| )(${alts.join("|")})( |$)`).test(text);
 }
 
-/** A fala do Beto citou o evento? Título (e o horário, se o título for curto): amarra o "sim" ao evento certo. */
-function mentionsEvent(assistantText: string, ev: Ev): boolean {
+/** A data do evento aparece na fala? "2 de outubro", "dia 2", "2/10", "amanhã", "hoje" ou o dia da semana (só se for esta semana). */
+function dateMentioned(text: string, ev: Ev, nowLocal: string): boolean {
+  const d = Number(ev.start.slice(8, 10)), mo = Number(ev.start.slice(5, 7)), evDate = ev.start.slice(0, 10);
+  if (new RegExp(`(^| )((dia )?${d} de ${MONTHS_PLAIN[mo - 1]}|dia ${d}|0?${d} 0?${mo})( |$)`).test(text)) return true;
+  const today = nowLocal.slice(0, 10);
+  if (evDate === today && wordIn(text, "hoje")) return true;
+  if (evDate === addDays(today, 1) && wordIn(text, "amanha") && !text.includes("depois de amanha")) return true;
+  if (evDate === addDays(today, 2) && text.includes("depois de amanha")) return true;
+  const diff = daysBetween(today, evDate);
+  if (diff >= 0 && diff <= 6) {
+    const [y, m, dd] = evDate.split("-").map(Number);
+    return wordIn(text, WEEKDAYS_PLAIN[new Date(Date.UTC(y, m - 1, dd)).getUTCDay()]);   // mais longe que isso, "sexta" é ambíguo
+  }
+  return false;
+}
+
+/** A fala do Beto citou ESTE evento? Título (palavra inteira), horário e, nas ações sem volta, o dia. Amarra o "sim" ao evento certo. */
+function mentionsEvent(assistantText: string, ev: Ev, nowLocal: string, needDate: boolean): boolean {
   const t = plain(assistantText), title = plain(ev.title);
-  if (!title || !t.includes(title)) return false;
-  return title.length >= 8 || hourMentioned(t, ev.start);
+  if (!title || !wordIn(t, title)) return false;
+  if (!ev.allDay && !hourMentioned(t, ev.start)) return false;
+  return needDate ? dateMentioned(t, ev, nowLocal) : true;
 }
 
 /** Emails que o chefe disse (digitados ou falados: "joão arroba empresa ponto com"). Comparação por igualdade. */
@@ -133,7 +164,7 @@ async function eventsBetween(api: CalendarApi, startLocal: string, endLocal: str
 }
 
 const NEEDS_CONFIRMATION =
-  "Peça a confirmação ao chefe em UMA frase curta que cite o TÍTULO EXATO do evento e o horário, e só chame esta ferramenta de novo depois do sim dele. Não diga que já fez.";
+  "Peça a confirmação ao chefe usando EXATAMENTE a frase de ask_with (ela cita o título, o dia e o horário) e só chame esta ferramenta de novo depois do sim dele. Não diga que já fez.";
 
 export async function executeCalendarTool(name: string, args: unknown, ctx: ToolCtx): Promise<unknown> {
   if (!ctx.api) return { needsLogin: true, error: "O Google Calendar não está conectado." };
@@ -207,7 +238,7 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
 
       const conflicts = conflictsFor(await eventsBetween(api, start, end), start, end);
       // "Marcar mesmo assim" só vale com o "sim" do chefe a uma pergunta que citou o evento em conflito.
-      const accepted = args.ignore_conflicts === true && ctx.confirmed && conflicts.some((c) => plain(ctx.lastAssistant).includes(plain(c.title)));
+      const accepted = args.ignore_conflicts === true && ctx.confirmed && conflicts.some((c) => mentionsEvent(ctx.lastAssistant, c, ctx.nowLocal, false));
       if (conflicts.length && !accepted) {
         return { status: "conflict", conflicts: conflicts.map(brief), instruction: "Avise o chefe do conflito em uma frase, citando o título do evento em conflito, e pergunte se marca mesmo assim. Só se ele disser sim, chame create_event de novo com ignore_conflicts=true." };
       }
@@ -254,17 +285,19 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
         if (localToEpoch(newEnd) <= localToEpoch(newStart)) return fail("end precisa ser depois de start.");
         if (args.start !== undefined && localToEpoch(newStart) < localToEpoch(ctx.nowLocal) - PAST_MS) return fail(`start já passou (agora são ${ctx.nowLocal.replace("T", " ")}). Confira o dia.`);
         const conflicts = conflictsFor((await eventsBetween(api, newStart, newEnd)).filter((e) => e.id !== ev.id), newStart, newEnd);
-        const accepted = args.ignore_conflicts === true && ctx.confirmed && conflicts.some((c) => plain(ctx.lastAssistant).includes(plain(c.title)));
+        const accepted = args.ignore_conflicts === true && ctx.confirmed && conflicts.some((c) => mentionsEvent(ctx.lastAssistant, c, ctx.nowLocal, false));
         if (conflicts.length && !accepted) {
           return { status: "conflict", conflicts: conflicts.map(brief), instruction: "Avise o chefe do conflito, citando o título do evento em conflito, e pergunte se remarca mesmo assim. Só se ele disser sim, chame update_event de novo com ignore_conflicts=true." };
         }
       }
       if (ev.hasOthers) {
-        if (!(ctx.confirmed && mentionsEvent(ctx.lastAssistant, ev))) {
-          return { status: "needs_confirmation", event: brief(ev), change: timeChange ? { new_when: when(newStart, newEnd) } : undefined, instruction: `${NEEDS_CONFIRMATION} O evento tem convidados, que serão avisados.` };
+        if (!(ctx.confirmed && mentionsEvent(ctx.lastAssistant, ev, ctx.nowLocal, true))) {
+          const ask = `Remarco ${ev.title}, ${ev.spoken}${timeChange ? `, para ${when(newStart, newEnd)}` : ""}? Os convidados serão avisados.`;
+          return { status: "needs_confirmation", event: brief(ev), change: timeChange ? { new_when: when(newStart, newEnd) } : undefined, ask_with: ask, instruction: `${NEEDS_CONFIRMATION} O evento tem convidados, que serão avisados.` };
         }
         if (ctx.state.destructive > 0) return fail("Só uma ação destrutiva por vez; peça o resto em outra mensagem.");
       }
+      if ((ctx.state.updates ?? 0) >= 2) return fail("Só duas remarcações ou alterações por mensagem; peça o resto em outra mensagem.");
       const body: Record<string, unknown> = {};
       if (isStr(args.title)) body.summary = args.title.trim();
       if (isStr(args.location)) body.location = args.location.trim();
@@ -274,6 +307,7 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
         body.end = { dateTime: `${newEnd.slice(0, 16)}:00`, timeZone: TZ };
       }
       const updated = tryNormalize(await api.patch(ev.id, body, { sendUpdates: ev.hasOthers ? "all" : "none" }));
+      ctx.state.updates = (ctx.state.updates ?? 0) + 1;
       if (ev.hasOthers) ctx.state.destructive++;
       return updated ? { status: "updated", id: updated.id, title: updated.title, when: updated.spoken } : { status: "updated", title: ev.title, when: when(newStart, newEnd) };
     }
@@ -286,8 +320,9 @@ export async function executeCalendarTool(name: string, args: unknown, ctx: Tool
       const ev = tryNormalize(raw);
       if (!ev) return fail("Esse evento não tem horário válido.");
       if (ev.series) return fail(SERIES);
-      if (!(ctx.confirmed && mentionsEvent(ctx.lastAssistant, ev))) {
-        return { status: "needs_confirmation", event: brief(ev), instruction: `${NEEDS_CONFIRMATION}${ev.hasOthers ? " O evento tem convidados, que serão avisados do cancelamento." : ""}` };
+      if (!(ctx.confirmed && mentionsEvent(ctx.lastAssistant, ev, ctx.nowLocal, true))) {
+        const ask = `Cancelo ${ev.title}, ${ev.spoken}?${ev.hasOthers ? " Os convidados serão avisados." : ""}`;
+        return { status: "needs_confirmation", event: brief(ev), ask_with: ask, instruction: `${NEEDS_CONFIRMATION}${ev.hasOthers ? " O evento tem convidados, que serão avisados do cancelamento." : ""}` };
       }
       if (ctx.state.destructive > 0) return fail("Só uma ação destrutiva por vez; peça o resto em outra mensagem.");
       await api.remove(ev.id, { sendUpdates: ev.hasOthers ? "all" : "none" });

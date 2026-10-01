@@ -130,7 +130,7 @@ test("create_event: conflito não cria; com ignore_conflicts cria", async () => 
   const sem = await run("create_event", { title: "Call", start: "2026-10-02T12:30", ignore_conflicts: true }, ctx(api));
   assert.equal(sem.status, "conflict", "ignore_conflicts sem o 'sim' do chefe não vale");
   const r2 = await run("create_event", { title: "Call", start: "2026-10-02T12:30", ignore_conflicts: true },
-    ctx(api, { confirmed: true, lastAssistant: "tem conflito com o almoco. marco mesmo assim?" }));
+    ctx(api, { confirmed: true, lastAssistant: "tem conflito com o almoco das 12h. marco mesmo assim?" }));
   assert.equal(r2.status, "created");
 });
 
@@ -175,7 +175,7 @@ test("update_event: evento com convidados exige confirmação do chefe (e só en
   const r = await run("update_event", { event_id: "e1", start: "2026-10-03T15:00" }, ctx(api));
   assert.equal(r.status, "needs_confirmation");
   assert.ok(!api.calls.some((c) => c[0] === "patch"));
-  const r2 = await run("update_event", { event_id: "e1", start: "2026-10-03T15:00" }, ctx(api, { confirmed: true, lastAssistant: "posso remarcar a reuniao das 15h para sabado?" }));
+  const r2 = await run("update_event", { event_id: "e1", start: "2026-10-03T15:00" }, ctx(api, { confirmed: true, lastAssistant: "posso remarcar a reuniao de amanha as 15h para sabado?" }));
   assert.equal(r2.status, "updated");
   assert.equal(api.calls.find((c) => c[0] === "patch")[3].sendUpdates, "all");
 });
@@ -204,7 +204,7 @@ test("delete_event: SEMPRE pede confirmação; só apaga com confirmed", async (
 
 test("delete_event: não encontrado e sem event_id; convidados são avisados só depois de confirmar", async () => {
   const api = fakeApi([ev("g", "Com convidado", "2026-10-02T15:00", "2026-10-02T16:00", { attendees: [{ email: "a@x.com" }] })]);
-  const yes = { confirmed: true, lastAssistant: "cancelo o com convidado das 15h?" };
+  const yes = { confirmed: true, lastAssistant: "cancelo o com convidado de amanha as 15h?" };
   assert.match((await run("delete_event", { event_id: "nada" }, ctx(api, yes))).error, /encontrad/i);
   assert.match((await run("delete_event", {}, ctx(api, yes))).error, /event_id/i);
   await run("delete_event", { event_id: "g" }, ctx(api, yes));
@@ -253,8 +253,8 @@ test("confirmação presa ao evento: a pergunta do Beto precisa citar o título 
 });
 
 test("só UMA ação destrutiva por requisição (nada de apagar várias com um 'sim')", async () => {
-  const api = fakeApi([ev("a", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00"), ev("b", "Reunião com o João", "2026-10-03T15:00", "2026-10-03T16:00")]);
-  const c = ctx(api, { confirmed: true, lastAssistant: "cancelo a reuniao com o joao das 15h?" });
+  const api = fakeApi([ev("a", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00"), ev("b", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00")]);
+  const c = ctx(api, { confirmed: true, lastAssistant: "cancelo a reuniao com o joao de amanha as 15h?" });
   assert.equal((await run("delete_event", { event_id: "a" }, c)).status, "deleted");
   assert.match((await run("delete_event", { event_id: "b" }, c)).error, /uma ação destrutiva/i);
   assert.ok(api.events.has("b"));
@@ -296,4 +296,105 @@ test("convite de outro organizador (sem lista de convidados) exige confirmação
   const api = fakeApi([ev("o", "Planejamento do Pedro", "2026-10-02T15:00", "2026-10-02T16:00", { organizer: { email: "pedro@x.com", self: false } })]);
   const r = await run("update_event", { event_id: "o", start: "2026-10-03T15:00" }, ctx(api));
   assert.equal(r.status, "needs_confirmation");
+});
+
+/* ── Segunda revisão: a confirmação amarra ao evento CERTO (título, dia e horário) ─────────────── */
+
+const yesCtx = (api, lastAssistant, extra = {}) => ctx(api, { confirmed: true, lastAssistant, ...extra });
+
+test("confirmar exige citar o DIA: a pergunta sem data não apaga", async () => {
+  const api = fakeApi([ev("a", "Reunião semanal", "2026-10-02T15:00", "2026-10-02T16:00")]);
+  const r = await run("delete_event", { event_id: "a" }, yesCtx(api, "cancelo a reuniao semanal das 15h?"));
+  assert.equal(r.status, "needs_confirmation");
+  assert.ok(api.events.has("a"));
+  const ok = await run("delete_event", { event_id: "a" }, yesCtx(api, "cancelo a reuniao semanal de amanha as 15h?"));
+  assert.equal(ok.status, "deleted");
+});
+
+test("o 'sim' não apaga a ocorrência de OUTRO dia (mesmo título, mesmo dia da semana, outra data)", async () => {
+  const api = fakeApi([ev("sex2", "Reunião semanal", "2026-10-02T15:00", "2026-10-02T16:00"), ev("sex9", "Reunião semanal", "2026-10-09T15:00", "2026-10-09T16:00")]);
+  const pergunta = "cancelo a reuniao semanal desta sexta, 2 de outubro, as 15h?";
+  const errado = await run("delete_event", { event_id: "sex9" }, yesCtx(api, pergunta));
+  assert.equal(errado.status, "needs_confirmation", "o id do dia 9 não foi o citado");
+  assert.ok(api.events.has("sex9"));
+  const certo = await run("delete_event", { event_id: "sex2" }, yesCtx(api, pergunta));
+  assert.equal(certo.status, "deleted");
+});
+
+test("título curto: 'Call' às 15h em outro dia não é o evento da pergunta", async () => {
+  const api = fakeApi([ev("a", "Call", "2026-10-02T15:00", "2026-10-02T16:00"), ev("b", "Call", "2026-10-20T15:00", "2026-10-20T16:00")]);
+  const q = "cancelo a call de sexta, 2/10, as 15h?";
+  assert.equal((await run("delete_event", { event_id: "b" }, yesCtx(api, q))).status, "needs_confirmation");
+  assert.equal((await run("delete_event", { event_id: "a" }, yesCtx(api, q))).status, "deleted");
+});
+
+test("título é comparado por palavra inteira: 'Reunion' não confirma o evento 'union'", async () => {
+  const api = fakeApi([ev("u", "union", "2026-10-02T09:00", "2026-10-02T10:00")]);
+  const r = await run("delete_event", { event_id: "u" }, yesCtx(api, "cancelo a reunion de amanha as 9h?"));
+  assert.equal(r.status, "needs_confirmation");
+});
+
+test("ignore_conflicts: título que some depois de limpar a pontuação nunca é aceito; precisa citar título e horário", async () => {
+  const api = fakeApi([ev("x", ".", "2026-10-02T12:00", "2026-10-02T13:00"), ev("y", "Almoço", "2026-10-03T12:00", "2026-10-03T13:00")]);
+  const pontuacao = await run("create_event", { title: "Call", start: "2026-10-02T12:30", ignore_conflicts: true }, yesCtx(api, "tem conflito. marco mesmo assim?"));
+  assert.equal(pontuacao.status, "conflict");
+  const semHora = await run("create_event", { title: "Call", start: "2026-10-03T12:30", ignore_conflicts: true }, yesCtx(api, "tem conflito com o almoco. marco mesmo assim?"));
+  assert.equal(semHora.status, "conflict", "sem o horário do conflito");
+  const ok = await run("create_event", { title: "Call", start: "2026-10-03T12:30", ignore_conflicts: true }, yesCtx(api, "tem conflito com o almoco das 12h. marco mesmo assim?"));
+  assert.equal(ok.status, "created");
+});
+
+test("o horário pode vir em vários formatos: 12:00, meio-dia, 9h, 09h, 3 da tarde, 15h30, 15:30", async () => {
+  const mk = (id, title, start) => ev(id, title, start, start.replace(/T(\d\d)/, (m, h) => `T${String(Number(h) + 1).padStart(2, "0")}`));
+  const casos = [
+    ["Almoço do dia", "2026-10-02T12:00", "cancelo o almoco do dia de amanha as 12:00?"],
+    ["Almoço do dia", "2026-10-02T12:00", "cancelo o almoco do dia de amanha ao meio-dia?"],
+    ["Consulta médica", "2026-10-02T09:00", "cancelo a consulta medica de amanha as 9h?"],
+    ["Consulta médica", "2026-10-02T09:00", "cancelo a consulta medica de amanha as 09h?"],
+    ["Café da tarde", "2026-10-02T15:00", "cancelo o cafe da tarde de amanha as 3 da tarde?"],
+    ["Reunião de alinhamento", "2026-10-02T15:30", "cancelo a reuniao de alinhamento de amanha as 15h30?"],
+    ["Reunião de alinhamento", "2026-10-02T15:30", "cancelo a reuniao de alinhamento de amanha as 15:30?"],
+    ["Reunião de alinhamento", "2026-10-02T15:30", "cancelo a reuniao de alinhamento de amanha as 15 e meia?"],
+  ];
+  for (const [title, start, q] of casos) {
+    const api = fakeApi([mk("e", title, start)]);
+    assert.equal((await run("delete_event", { event_id: "e" }, yesCtx(api, q))).status, "deleted", q);
+  }
+});
+
+test("data citada de várias formas: 'amanhã', 'hoje', '2 de outubro', '2/10', 'dia 2', 'sexta' (dentro da semana)", async () => {
+  const mk = (q, nowLocal = "2026-10-01T10:00", start = "2026-10-02T15:00") => [fakeApi([ev("e", "Reunião com o João", start, start.replace("T15", "T16"))]), q, nowLocal];
+  for (const [q, now, start] of [
+    ["cancelo a reuniao com o joao de amanha as 15h?"],
+    ["cancelo a reuniao com o joao em 2 de outubro as 15h?"],
+    ["cancelo a reuniao com o joao dia 2/10 as 15h?"],
+    ["cancelo a reuniao com o joao no dia 2 as 15h?"],
+    ["cancelo a reuniao com o joao de sexta as 15h?"],
+    ["cancelo a reuniao com o joao de hoje as 15h?", "2026-10-02T08:00"],
+  ]) {
+    const [api, , nowLocal] = mk(q, now, start);
+    assert.equal((await run("delete_event", { event_id: "e" }, yesCtx(api, q, { nowLocal }))).status, "deleted", q);
+  }
+  // evento a mais de uma semana: 'sexta' sozinha é ambígua, precisa da data
+  const far = fakeApi([ev("e", "Reunião com o João", "2026-10-16T15:00", "2026-10-16T16:00")]);
+  assert.equal((await run("delete_event", { event_id: "e" }, yesCtx(far, "cancelo a reuniao com o joao de sexta as 15h?"))).status, "needs_confirmation");
+  assert.equal((await run("delete_event", { event_id: "e" }, yesCtx(far, "cancelo a reuniao com o joao de sexta, 16 de outubro, as 15h?"))).status, "deleted");
+});
+
+test("o resultado needs_confirmation já traz a frase pronta com título, dia e horário", async () => {
+  const api = fakeApi([ev("e", "Reunião com o João", "2026-10-02T15:00", "2026-10-02T16:00")]);
+  const r = await run("delete_event", { event_id: "e" }, ctx(api));
+  assert.match(r.ask_with, /Reunião com o João/);
+  assert.match(r.ask_with, /2 de outubro/);
+  assert.match(r.ask_with, /15h/);
+  assert.match(r.ask_with, /\?$/);
+});
+
+test("no máximo 2 remarcações/renomeações por requisição (evento sem convidados também)", async () => {
+  const api = fakeApi([ev("a", "A", "2026-10-02T10:00", "2026-10-02T11:00"), ev("b", "B", "2026-10-02T12:00", "2026-10-02T13:00"), ev("c", "C", "2026-10-02T14:00", "2026-10-02T15:00")]);
+  const c = ctx(api);
+  assert.equal((await run("update_event", { event_id: "a", title: "A2" }, c)).status, "updated");
+  assert.equal((await run("update_event", { event_id: "b", title: "B2" }, c)).status, "updated");
+  assert.match((await run("update_event", { event_id: "c", title: "C2" }, c)).error, /duas/i);
+  assert.equal(api.events.get("c").summary, "C");
 });

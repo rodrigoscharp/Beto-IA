@@ -75,7 +75,7 @@ async function replyWithCalendar(req: NextRequest, apiKey: string, messages: Msg
     ? (acted ? "Fiz parte do pedido na agenda, mas não consegui terminar. Confere lá, chefe." : "Não consegui concluir isso na agenda agora, chefe.")
     : "");
   if (detectNeedTools(text) === "yes") text = "Não consegui fazer isso agora, chefe.";   // o marcador interno nunca chega ao chefe
-  return { text, needsLogin, steps: result.steps, tools: result.calls.map((c) => (c.ok ? c.name : `${c.name}:erro`)) };
+  return { text, needsLogin, steps: result.steps, acted, tools: result.calls.map((c) => (c.ok ? c.name : `${c.name}:erro`)) };
 }
 
 // Cache memórias por 5 min para não bater no Supabase a cada mensagem
@@ -194,11 +194,13 @@ export async function POST(req: NextRequest) {
     let retried = false;
     let needsGoogleLogin = false;
     let tools: string[] = [];
+    let acted = false;      // alguma ferramenta de ESCRITA (criar/remarcar/cancelar) executou com sucesso
     let steps = 1;
     const viaCalendar = async () => {
       const r = await replyWithCalendar(req, apiKey, messages, memories);
       needsGoogleLogin = r.needsLogin;
       tools = r.tools;
+      acted = r.acted;
       steps = r.steps;
       return r.text;
     };
@@ -219,7 +221,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       reply,
       ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}),
-      ...(tools.length ? { usedTools: true } : {}),      // o cliente não duvida da resposta nem refaz o registro do My Hub
+      ...(acted ? { usedTools: true } : {}),              // a agenda JÁ foi alterada: o cliente não duvida da resposta nem refaz o registro do My Hub
     }, { headers: { "x-beto-model": workingModel() ?? "" } });
   } catch (error: unknown) {
     console.error("[Beto API] Erro:", error);
