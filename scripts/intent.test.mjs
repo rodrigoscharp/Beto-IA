@@ -434,3 +434,8 @@ test("wantsMemory junta as três e memória nunca vai pelo streaming de conversa
   }
   assert.equal(wantsMemory([u("como você está hoje de manhã")]), false);
 });
+
+test("claimsWrite entende os verbos de memória, com negação, pergunta e fato anterior", () => {
+  for (const t of ["Guardei isso, chefe.", "Pronto, memorizei.", "Salvei na memória.", "Esqueci essa, chefe.", "Tá guardado."]) assert.equal(claimsWrite(t), true, t);
+  for (const t of ["Não guardei nada.", "Quer que eu guarde?", "Isso já está guardado.", "Ainda não salvei."]) assert.equal(claimsWrite(t), false, t);
+});

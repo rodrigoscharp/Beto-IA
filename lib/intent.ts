@@ -220,7 +220,7 @@ export function wantsMyHubUndo(messages: ChatMsg[]): boolean {
 
 /** O texto diz que JÁ fez algo (registrou, marcou, cancelou…). Se nenhuma ferramenta de escrita executou, é mentira.
     Frase com negação ("não registrei"), pergunta ("quer que eu anote?") ou fato anterior ("já está registrado") não conta. */
-const CLAIM = /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz)\b/;
+const CLAIM = /\b(anotei|anotado|registrei|registrado|lancei|lancado|adicionei|adicionado|coloquei|marquei|criei|cancelei|remarquei|apaguei|desfiz|guardei|guardado|salvei|memorizei|esqueci)\b/;
 export function claimsWrite(text: string): boolean {
   for (const sentence of norm(text).split(/(?<=[.!?])\s+/)) {
     const m = CLAIM.exec(sentence);

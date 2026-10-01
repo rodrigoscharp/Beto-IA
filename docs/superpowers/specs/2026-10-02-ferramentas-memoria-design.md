@@ -30,3 +30,10 @@ Saem do navegador `execMemory`, a tag `[MEMORY:]` e a rota `/api/memory/command`
 
 - Sem Supabase real aqui: a validação usa uma API REST falsa no formato do PostgREST. Gmail e GitHub ficam para as próximas rodadas.
 - O Beto deixa de salvar sozinho o que "aprende" no meio da conversa; só salva quando o chefe pede. É uma troca consciente de conveniência por segurança, e fácil de reverter (permitir `memory_save` sem pedido quando não houver conteúdo de terceiros no contexto).
+
+## Validação
+
+- Testes de unidade: `scripts/memorytools.test.mjs` (11), intenções em `scripts/intent.test.mjs`, guia e bloco de dados em `scripts/prompt.test.mjs`. Suíte: 266 passando.
+- E2E com Groq falsa e Supabase falso (PostgREST): guardar, não duplicar, listar, rede de proteção ("Anotado" sem ferramenta refaz e guarda), injeção (modelo manda `memory_save` num pedido de email: recusado), "esquece, deixa pra lá" (não apaga) e esquecer só a memória pedida. Conversa comum não anexa as ferramentas.
+- `claimsWrite` passou a entender guardei, guardado, salvei, memorizei e esqueci.
+- Comportamento de cada modelo real com as ferramentas só aparece em produção.
