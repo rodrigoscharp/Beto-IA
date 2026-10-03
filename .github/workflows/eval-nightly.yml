@@ -1,0 +1,42 @@
+# Bateria de avaliação de fala, 1x por noite (3h em Brasília). Manda as frases de evals/cases.json ao modelo
+# principal e compara com evals/baseline.json. Queda de mais de 5 pontos ou Groq fora do ar: job falha e chega push.
+# Precisa dos secrets GROQ_API_KEY e CRON_SECRET.
+name: Beto eval nightly
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Rodar a bateria
+        id: eval
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: npm run eval -- --ci
+      - name: Guardar o relatório
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/out/
+          if-no-files-found: ignore
+      - name: Avisar por push
+        if: failure()
+        run: |
+          body=$(cat evals/out/ci.json 2>/dev/null || echo '{"status":"nao_rodou","total":null,"baseline":null,"piorArea":null}')
+          curl -fsS -m 30 -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            -d "$body" \
+            https://betoia.vercel.app/api/cron/eval-report
