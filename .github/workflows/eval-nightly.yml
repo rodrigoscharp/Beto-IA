@@ -23,6 +23,7 @@ jobs:
         id: eval
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}   # mesmo modelo principal da produção, se estiver definido
           EVAL_BUDGET_MS: "1200000"   # 20 min: fecha antes do timeout do job, para o aviso ainda sair
         run: npm run eval -- --ci
       - name: Guardar o relatório
@@ -34,10 +35,14 @@ jobs:
           if-no-files-found: ignore
       - name: Avisar por push
         if: failure() || cancelled()
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           body=$(cat evals/out/ci.json 2>/dev/null || echo '{"status":"nao_rodou","total":null,"baseline":null,"piorArea":null}')
+          # A bateria passou e outro passo falhou (ex.: upload do relatório): não é queda, não avisa.
+          if echo "$body" | grep -q '"status":"ok"'; then exit 0; fi
           curl -fsS -m 30 -X POST \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json" \
             -d "$body" \
             https://betoia.vercel.app/api/cron/eval-report

@@ -16,5 +16,5 @@ test("recusa status, número ou área fora do esperado e texto livre", () => {
 
 test("mensagem do push", () => {
   assert.deepEqual(evalReportMessage({ status: "queda", total: 0.81, baseline: 0.92, piorArea: "agenda" }), { title: "Beto: avaliação caiu", body: "A nota caiu de 92% para 81% (pior área: agenda)." });
-  assert.equal(evalReportMessage({ status: "nao_rodou", total: null, baseline: null, piorArea: null }).body, "A avaliação noturna não rodou (Groq fora do ar ou sem cota).");
+  assert.equal(evalReportMessage({ status: "nao_rodou", total: null, baseline: null, piorArea: null }).body, "A avaliação noturna não rodou (Groq fora do ar, sem cota ou erro no job).");
 });

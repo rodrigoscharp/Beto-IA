@@ -37,3 +37,4 @@ next-env.d.ts
 
 # bateria de avaliação: relatórios e snapshot cru do My Hub
 evals/out/
+!.env*.example

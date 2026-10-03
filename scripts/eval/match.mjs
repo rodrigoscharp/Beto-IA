@@ -11,7 +11,7 @@ export function parseRegex(s) {
 }
 
 const getPath = (obj, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
-const asNumber = (v) => (v === null || v === undefined || v === "" || typeof v === "boolean" ? NaN : Number(v));
+const asNumber = (v) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN);
 
 function matchValue(exp, act) {
   if (typeof exp === "number") return asNumber(act) === exp;

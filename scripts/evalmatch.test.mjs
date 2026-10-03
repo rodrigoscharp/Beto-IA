@@ -109,3 +109,9 @@ test("tag segue o parser de produção: [TAG:{json}] exato, com JSON válido", (
   assert.equal(matchCase({ espera: { tag: "SPOTIFY" } }, R({ text: "[SPOTIFY:{action:play}] Vai." })).ok, false);
   assert.equal(matchCase({ espera: { tag: "SPOTIFY" } }, R({ text: "[emo:neutro] [SPOTIFY:{\"action\":\"pause\"}] Ok." })).ok, true);
 });
+
+test("número: espaço, array e objeto não viram número", () => {
+  const caso = { espera: { ferramenta: "x", args: { v: { min: 0 } } } };
+  for (const v of [" ", [35], [], {}, "  \n"]) assert.equal(matchCase(caso, R({ toolCalls: [call("x", { v })] })).ok, false, JSON.stringify(v));
+  assert.equal(matchCase({ espera: { ferramenta: "x", args: { v: 35 } } }, R({ toolCalls: [call("x", { v: [35] })] })).ok, false);
+});

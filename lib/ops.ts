@@ -73,7 +73,7 @@ export function validEvalReport(body: unknown): EvalReport | null {
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 export function evalReportMessage(r: EvalReport): { title: string; body: string } {
-  if (r.status === "nao_rodou") return { title: "Beto: avaliação não rodou", body: "A avaliação noturna não rodou (Groq fora do ar ou sem cota)." };
+  if (r.status === "nao_rodou") return { title: "Beto: avaliação não rodou", body: "A avaliação noturna não rodou (Groq fora do ar, sem cota ou erro no job)." };
   const de = r.baseline !== null ? `de ${pct(r.baseline)} ` : "";
   const para = r.total !== null ? `para ${pct(r.total)}` : "";
   const area = r.piorArea ? ` (pior área: ${r.piorArea})` : "";
