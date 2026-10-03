@@ -4,7 +4,7 @@ import { deleteMemory, listMemoriesStrict, saveMemory } from "@/lib/supabase";
 import { getMyHubContext, myHubDesfazer, myHubRegistrar, myHubWriteConfigured, type MyHubContext } from "@/lib/myhub";
 import { myHubPromptBlock } from "@/lib/myhubprompt";
 import { getBrasiliaTime } from "@/lib/time";
-import { claimsWrite, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, memoryGroundText, wantsMemory, wantsMemoryForget, wantsMemorySave, wantsMemoryTopic, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
+import { claimsWrite, userConfirmed, wantsCalendarWrite, memoryGroundText, wantsMemoryForget, wantsMemorySave, wantsMemoryTopic, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
 import { runToolLoop, type LoopMsg } from "@/lib/toolloop";
 import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/calendar";
 import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
@@ -12,6 +12,7 @@ import { MYHUB_TOOLS, executeMyHubTool, type MyHubCtx } from "@/lib/tools/myhub"
 import { MEMORY_TOOLS, executeMemoryTool, type MemoryCtx } from "@/lib/tools/memory";
 import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
+import { planTurn, type ToolSets } from "@/lib/turnplan";
 
 type Memories = { content: string; category: string }[];
 type Msg = { role: string; content: string };
@@ -32,8 +33,6 @@ function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | n
     mode,
   );
 }
-
-interface ToolSets { calendar: boolean; myhub: boolean; memory: boolean }
 
 /** O navegador guarda o último caminho de desfazer do My Hub e o reenvia aqui; valida o formato e limita o tamanho. */
 function parseUndo(raw: unknown): { path: string | null; resumo: string; ts: number } | null {
@@ -234,7 +233,9 @@ export async function POST(req: NextRequest) {
 
     const t0 = Date.now();
     // `full`: o cliente já viu o modo conversa falhar (disse que fez sem ter ferramenta) e pede o prompt completo.
-    const mode: PromptMode = forceFull === true || needsTools(messages) ? "full" : "chat";
+    const hubOn = myHubWriteConfigured();
+    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured() }, forceFull === true);
+    const mode: PromptMode = plan.mode;
     // Conversa simples não precisa do My Hub: pula a ida ao servidor dele.
     const [memories, myhub] = await Promise.all([getCachedMemories(), mode === "full" ? getMyHubContext() : Promise.resolve(null)]);
     const ctxMs = Date.now() - t0;
@@ -284,8 +285,6 @@ export async function POST(req: NextRequest) {
     let acted = false;      // alguma ferramenta de ESCRITA executou com sucesso (agenda ou My Hub)
     let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
-    const hubOn = myHubWriteConfigured();
-    const wanted: ToolSets = { calendar: wantsCalendar(messages), myhub: hubOn && (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)), memory: memoryConfigured() && (wantsMemory(messages) || wantsMemoryTopic(messages)) };
     const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured() };
     const viaTools = async (sets: ToolSets) => {
       const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
@@ -298,8 +297,8 @@ export async function POST(req: NextRequest) {
     };
     // Pedido de agenda ou de registro no My Hub: o prompt completo vai junto com as ferramentas do que foi pedido.
     // (`full` do cliente só força o prompt completo; não liga ferramentas por si.)
-    if (mode === "full" && (wanted.calendar || wanted.myhub || wanted.memory)) {
-      reply = await viaTools(wanted);
+    if (plan.sets) {
+      reply = await viaTools(plan.sets);
     } else {
       reply = await run(mode, myhub);
       if (detectNeedTools(reply) === "yes") {

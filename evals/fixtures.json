@@ -1,0 +1,30 @@
+{
+  "_nota": "Contexto fixo da bateria. Tudo aqui é fictício (o repositório é público). O catálogo de ações e os nomes imitam o formato do My Hub real; atualize com scripts/eval/snapshot-myhub.mjs e anonimize antes de commitar.",
+  "agora": { "date": "2026-10-01", "dateLabel": "quinta-feira, 1 de outubro de 2026", "time": "10:00", "period": "manhã" },
+  "memorias": [
+    { "content": "O carro dele é um Civic 2019", "category": "fact" },
+    { "content": "Prefere reuniões depois das 14h", "category": "preference" },
+    { "content": "Conta padrão para gastos do dia a dia: Carteira", "category": "preference" },
+    { "content": "Treina na academia de segunda a sexta de manhã", "category": "habit" },
+    { "content": "Está estudando inglês para entrevistas", "category": "fact" }
+  ],
+  "myhub": {
+    "hoje": "2026-10-01",
+    "entrevistasProximas": [],
+    "acoes": "registrarTransacao (tipo*, valorEmReais*, descricao*, categoria, conta, data)\nregistrarCheckinHabito (habito*, quantidade, data)\nregistrarAtividade (atividade*, minutos, calorias, data)\nregistrarAporte (meta*, valorEmReais*, data)\nregistrarInvestimento (ativo*, quantidade*, precoUnitario*, data)",
+    "referencias": {
+      "contas": ["Carteira", "PJ"],
+      "categoriasDeDespesa": ["Mercado", "Gasolina", "Restaurante", "Transporte", "Lazer", "Contas da casa"],
+      "categoriasDeReceita": ["Salário", "Freelance"],
+      "habitos": ["Beber água", "Cardio", "Leitura", "Estudar inglês"],
+      "projetos": ["Beto"],
+      "trilhas": ["Inglês"]
+    },
+    "topicos": {
+      "financas": { "gastoDoMes": "R$ 1.240,00", "maioresCategorias": ["Mercado", "Restaurante"] },
+      "habitos": { "Beber água": "ontem 2.000 ml", "Leitura": "parado há 3 dias" },
+      "afazeres": ["Revisar proposta do cliente", "Pagar conta de luz"]
+    },
+    "indisponiveis": []
+  }
+}

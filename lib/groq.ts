@@ -131,16 +131,28 @@ export interface CompleteResult {
   model: string;
 }
 
+function parseCompletion(res: Groq.Chat.ChatCompletion, model: string): CompleteResult {
+  const msg = res.choices[0]?.message;
+  const content = (msg?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  const toolCalls = (msg?.tool_calls ?? []).map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments ?? "" }));
+  return { content, toolCalls, model };
+}
+
 export async function groqComplete(apiKey: string, params: ChatParams): Promise<CompleteResult> {
   return withModels(apiKey, async (groq, model) => {
     const res = await groq.chat.completions.create({ ...params, ...fastFor(model), model, stream: false } as never) as Groq.Chat.ChatCompletion;
-    const msg = res.choices[0]?.message;
-    const content = (msg?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    const toolCalls = (msg?.tool_calls ?? []).map((c) => ({ id: c.id, name: c.function.name, arguments: c.function.arguments ?? "" }));
-    if (!content && toolCalls.length === 0) throw new Error(`O modelo ${model} não devolveu nada.`);
+    const r = parseCompletion(res, model);
+    if (!r.content && r.toolCalls.length === 0) throw new Error(`O modelo ${model} não devolveu nada.`);
     working = model;
-    return { content, toolCalls, model };
+    return r;
   }, "tools");
+}
+
+/* Um modelo só, sem reserva nem cooldown e sem mexer no `working`: a bateria de avaliação precisa saber que
+   AQUELE modelo respondeu. Erro (429 inclusive) volta para quem chamou. */
+export async function groqCompleteOn(apiKey: string, model: string, params: ChatParams): Promise<CompleteResult> {
+  const res = await newClient(apiKey).chat.completions.create({ ...params, ...fastFor(model), model, stream: false } as never) as Groq.Chat.ChatCompletion;
+  return parseCompletion(res, model);
 }
 
 /* Streaming: devolve a resposta em pedaços de texto, com a mesma lista e a mesma troca de modelo. Só troca de
