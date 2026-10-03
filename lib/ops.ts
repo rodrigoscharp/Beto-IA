@@ -48,3 +48,6 @@ export function validMetric(body: unknown): { evt: "ttfa"; ms: number; via: (typ
   if (!VIAS.includes(o.via as never)) return null;
   return { evt: "ttfa", ms: Math.round(o.ms), via: o.via as (typeof VIAS)[number] };
 }
+
+/** Áreas da bateria de avaliação (evals/cases.json). A rota de relatório só aceita estes nomes. */
+export const EVAL_AREAS = ["agenda", "myhub", "memoria", "spotify", "timer", "email", "github", "briefing", "conversa", "confirmacao"] as const;
