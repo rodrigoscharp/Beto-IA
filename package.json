@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "node --import ./scripts/register-ts.mjs --test scripts/*.test.mjs",
+    "eval": "node --import ./scripts/register-ts.mjs scripts/eval/run.mjs",
     "test:face": "node --test scripts/face.test.mjs",
     "icons": "node scripts/gen-icons.mjs"
   },
