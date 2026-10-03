@@ -8,6 +8,7 @@ import { matchCase, majority, score, exitCode, isDrop, notRun, worstArea } from 
 import { detectNeedTools } from "../../lib/prompt.ts";
 
 const RETRIES = 3;
+const MAX_WAIT_S = 60;   // retry-after maior que isso (cota do dia acabou) não vale esperar: vira erro mais rápido
 const realSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function callWithRetry(fn, sleep) {
@@ -16,7 +17,7 @@ async function callWithRetry(fn, sleep) {
     catch (e) {
       if (e?.status !== 429 || i >= RETRIES) throw e;
       const s = Number(e.headers?.["retry-after"]);
-      await sleep((Number.isFinite(s) && s > 0 ? s : 10) * 1000);
+      await sleep(Math.min(Number.isFinite(s) && s > 0 ? s : 10, MAX_WAIT_S) * 1000);
     }
   }
 }
@@ -30,20 +31,26 @@ function toResult(c) {
   return { toolCalls, text: c.content, needTools: detectNeedTools(c.content) === "yes" };
 }
 
-export async function runSuite({ cases, fixtures, model, apiKey, gapMs = 2500, sleep = realSleep, call, log = console.log }) {
+export async function runSuite({ cases, fixtures, model, apiKey, gapMs = 2500, sleep = realSleep, call, log = console.log, budgetMs = Infinity, now = Date.now }) {
   const rows = [];
+  const start = now();
   let msTotal = 0, calls = 0, first = true;
   for (const caso of cases) {
     const tries = [];
     let status = "ok", motivo = "", ms = 0;
+    if (now() - start > budgetMs) {
+      // Sem tempo: o job da noite tem prazo e, se for cancelado por tempo, nenhum aviso sai. Melhor fechar como erro.
+      rows.push({ id: caso.id, area: caso.area, status: "erro", motivo: "sem tempo (orçamento da execução esgotado)", ms: 0 });
+      continue;
+    }
     try {
       for (let t = 0; t < (caso.repete ?? 1); t++) {
         if (!first && gapMs) await sleep(gapMs);
         first = false;
         const { params } = buildRequest(caso.conversa, fixtures);
-        const t0 = Date.now();
+        const t0 = now();
         const c = await callWithRetry(() => call(apiKey, model, params), sleep);
-        ms = Date.now() - t0; msTotal += ms; calls++;
+        ms = now() - t0; msTotal += ms; calls++;
         tries.push(matchCase(caso, toResult(c)));
       }
       const m = tries.length > 1 ? majority(tries) : tries[0];
@@ -86,13 +93,14 @@ async function main() {
   const fixtures = read("evals/fixtures.json");
   const baselines = existsSync("evals/baseline.json") ? read("evals/baseline.json") : {};
   const gapMs = Number(process.env.EVAL_GAP_MS ?? 2500);
+  const budgetMs = Number(process.env.EVAL_BUDGET_MS ?? Infinity);
   const models = opts.all ? PREFERRED : [opts.model ?? PREFERRED[0]];
   mkdirSync("evals/out", { recursive: true });
 
   const results = [];
   for (const model of models) {
     console.log(`\n== ${model} (${cases.length} casos) ==`);
-    const r = await runSuite({ cases, fixtures, model, apiKey, gapMs, call: groqCompleteOn });
+    const r = await runSuite({ cases, fixtures, model, apiKey, gapMs, budgetMs, call: groqCompleteOn });
     results.push(r);
     const day = new Date().toISOString().slice(0, 10);
     writeFileSync(`evals/out/${day}-${model.replace(/[^\w.-]+/g, "_")}.json`, JSON.stringify(r, null, 2));

@@ -55,8 +55,11 @@ export function matchCase(caso, r) {
   }
   if (e.needTools) return r.needTools ? { ok: true, motivo: "" } : { ok: false, motivo: `esperava [NEEDTOOLS], veio ${describe(r)}` };
   if (e.tag) {
-    const m = new RegExp(`\\[\\s*${e.tag}\\s*:([\\s\\S]*?)\\]`, "i").exec(r.text);
-    if (!m) return { ok: false, motivo: `esperava a tag [${e.tag}:…], veio ${describe(r)}` };
+    // Mesmo formato que o app aceita (app/page.tsx, TAG): [TAG:{json}] exato. Tag fora disso não executa nada.
+    const m = new RegExp(`\\[${e.tag}:(\\{[\\s\\S]*?\\})\\]`).exec(r.text);
+    let json = !!m;
+    if (m) { try { JSON.parse(m[1]); } catch { json = false; } }
+    if (!m || !json) return { ok: false, motivo: `esperava a tag [${e.tag}:{…}] com JSON válido, veio ${describe(r)}` };
     if (e.conteudo && !parseRegex(e.conteudo).test(m[1])) return { ok: false, motivo: `tag [${e.tag}] com conteúdo diferente: ${short(m[1])}` };
     return { ok: true, motivo: "" };
   }

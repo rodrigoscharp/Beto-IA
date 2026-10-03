@@ -54,3 +54,21 @@ test("Groq fora do ar: todos erro, nota não conta como queda", async () => {
   const r = await runSuite({ cases: [caso("a", "x y z", { nenhumaFerramenta: true }), caso("b", "x y w", { nenhumaFerramenta: true })], fixtures: fx, model: "m", apiKey: "k", gapMs: 0, call, sleep: noSleep, log: () => {} });
   assert.equal(exitCode(r.score, { total: 0.9 }), 2);
 });
+
+test("retry-after longo é limitado a 60 s", async () => {
+  const waits = [];
+  let n = 0;
+  const call = async () => { if (n++ === 0) throw err(429, { "retry-after": "600" }); return reply("[emo:neutro] Oi"); };
+  await runSuite({ cases: [caso("a", "oi tudo bem contigo", { nenhumaFerramenta: true })], fixtures: fx, model: "m", apiKey: "k", gapMs: 0, call, sleep: async (ms) => { waits.push(ms); }, log: () => {} });
+  assert.deepEqual(waits, [60_000]);
+});
+
+test("orçamento de tempo estourado: casos restantes viram erro sem chamar o modelo", async () => {
+  let clock = 0, calls = 0;
+  const call = async () => { calls++; clock += 1000; return reply("[emo:neutro] Oi"); };
+  const cases = ["a", "b", "c"].map((id) => caso(id, "oi tudo bem contigo", { nenhumaFerramenta: true }));
+  const r = await runSuite({ cases, fixtures: fx, model: "m", apiKey: "k", gapMs: 0, call, sleep: noSleep, log: () => {}, budgetMs: 1500, now: () => clock });
+  assert.deepEqual(r.rows.map((x) => x.status), ["ok", "ok", "erro"]);
+  assert.equal(calls, 2);
+  assert.match(r.rows[2].motivo, /tempo/);
+});

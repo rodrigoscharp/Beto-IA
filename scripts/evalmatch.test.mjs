@@ -102,3 +102,10 @@ test("validateCases acha id repetido, área inválida, espera ambígua, regex qu
   ], ["create_event"]);
   for (const id of ["a", "b", "c", "d", "e", "f", "g"]) assert.ok(erros.some((e) => e.startsWith(id + ":")), `faltou erro de ${id}: ${erros}`);
 });
+
+test("tag segue o parser de produção: [TAG:{json}] exato, com JSON válido", () => {
+  assert.equal(matchCase({ espera: { tag: "SPOTIFY" } }, R({ text: "[spotify: play drake] Vai." })).ok, false);
+  assert.equal(matchCase({ espera: { tag: "SPOTIFY" } }, R({ text: "[SPOTIFY: play drake] Vai." })).ok, false);
+  assert.equal(matchCase({ espera: { tag: "SPOTIFY" } }, R({ text: "[SPOTIFY:{action:play}] Vai." })).ok, false);
+  assert.equal(matchCase({ espera: { tag: "SPOTIFY" } }, R({ text: "[emo:neutro] [SPOTIFY:{\"action\":\"pause\"}] Ok." })).ok, true);
+});

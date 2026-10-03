@@ -23,6 +23,7 @@ jobs:
         id: eval
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          EVAL_BUDGET_MS: "1200000"   # 20 min: fecha antes do timeout do job, para o aviso ainda sair
         run: npm run eval -- --ci
       - name: Guardar o relatório
         if: always()
@@ -32,7 +33,7 @@ jobs:
           path: evals/out/
           if-no-files-found: ignore
       - name: Avisar por push
-        if: failure()
+        if: failure() || cancelled()
         run: |
           body=$(cat evals/out/ci.json 2>/dev/null || echo '{"status":"nao_rodou","total":null,"baseline":null,"piorArea":null}')
           curl -fsS -m 30 -X POST \
