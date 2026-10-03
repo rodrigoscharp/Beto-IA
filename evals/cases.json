@@ -1,0 +1,2151 @@
+[
+ {
+  "id": "conv-01",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "e aí beto, tudo certo contigo hoje?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-02",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "qual a sua opinião sobre começar com um mvp pequeno"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-03",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me explica a diferença entre latência e vazão"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-04",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tô bem e você como anda"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-05",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "acho que vou mudar de estratégia no produto"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-06",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "como você está hoje de manhã"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-07",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me dá uma dica rápida pra negociar preço com cliente"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-08",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que você acha de next.js pra um projeto pequeno"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-09",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "qual a melhor marca de tênis pra corrida"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-10",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o Marcos ligou ontem e a gente conversou bastante"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-11",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "em março eu viajo para a praia com a família"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-12",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "software livre é bom para empresa pequena?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-13",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "como marcar presença numa planilha do excel"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-14",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me conta uma piada curta"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-15",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tô meio desanimado com o projeto essa semana"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-16",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "explica o que é juros compostos em duas frases"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-17",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que você acha de eu aprender rust esse ano"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-18",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "qual a capital da austrália"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-19",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me ajuda a pensar num nome pra uma cafeteria"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-20",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "valeu beto, ajudou muito"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-energia-nao-e-gasto",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "cara, gastei muita energia nessa reunião de hoje"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "conv-pagou-caro-opiniao",
+  "area": "conversa",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "paguei caro nesse almoço mas valeu a pena"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "conv-dormi-mal",
+  "area": "conversa",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "dormi mal hoje"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register",
+   "memory_save"
+  ]
+ },
+ {
+  "id": "conv-ligacao-joao",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "recebi uma ligação do João"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "conv-esqueci-senha",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "esqueci a senha do banco de novo"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "memory_forget",
+   "memory_save"
+  ]
+ },
+ {
+  "id": "conv-resposta-cansado",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Tudo certo por aqui. E você, como tá?"
+   },
+   {
+    "role": "user",
+    "content": "tô cansado mas indo bem"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "agenda-criar-dentista",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "marca dentista amanhã às 15h"
+   }
+  ],
+  "espera": {
+   "ferramenta": "create_event",
+   "args": {
+    "title": "/dentista/i",
+    "start": "/^2026-10-02T15:00/"
+   }
+  }
+ },
+ {
+  "id": "agenda-criar-reuniao",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "marca uma reunião amanhã às 15h com o time"
+   }
+  ],
+  "espera": {
+   "ferramenta": "create_event",
+   "args": {
+    "start": "/^2026-10-02T15:00/"
+   }
+  }
+ },
+ {
+  "id": "agenda-criar-cafe-sexta",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "agenda um café com a Ana sexta às 9h"
+   }
+  ],
+  "espera": {
+   "ferramenta": "create_event",
+   "args": {
+    "title": "/caf[eé]|ana/i",
+    "start": "/^2026-10-02T09:00/"
+   }
+  }
+ },
+ {
+  "id": "agenda-marque-dentista-sexta",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "marque o dentista para sexta às 10h"
+   }
+  ],
+  "espera": {
+   "ferramenta": "create_event",
+   "args": {
+    "start": "/^2026-10-02T10:00/"
+   }
+  }
+ },
+ {
+  "id": "agenda-criar-duracao",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "coloca na agenda uma call de 30 minutos hoje às 16h com o fornecedor"
+   }
+  ],
+  "espera": {
+   "ferramenta": "create_event",
+   "args": {
+    "start": "/^2026-10-01T16:00/"
+   }
+  }
+ },
+ {
+  "id": "agenda-listar-amanha",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que eu tenho na agenda amanhã?"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "agenda-listar-segunda",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tenho algum compromisso na segunda"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "agenda-proximo-evento",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "qual meu próximo evento"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "agenda-livre-amanha",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "estou livre amanhã à tarde?"
+   }
+  ],
+  "espera": {
+   "ferramenta": "find_free_slots"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "agenda-horario-livre-quinta",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "acha um horário livre na quinta que vem"
+   }
+  ],
+  "espera": {
+   "ferramenta": "find_free_slots"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "agenda-sem-horario-pergunta",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "marca uma reunião com o João"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event"
+  ]
+ },
+ {
+  "id": "agenda-cancelar-procura-antes",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "cancela a reunião de amanhã com o João"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "delete_event"
+  ]
+ },
+ {
+  "id": "agenda-remarcar-procura-antes",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "remarca a call de hoje pra amanhã no mesmo horário"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "delete_event"
+  ]
+ },
+ {
+  "id": "agenda-adiar-procura-antes",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "adia a reunião com o cliente para a semana que vem"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "delete_event"
+  ]
+ },
+ {
+  "id": "agenda-joga-call",
+  "area": "agenda",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "joga a call do João pra amanhã"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "delete_event"
+  ]
+ },
+ {
+  "id": "agenda-email-nao-e-agenda",
+  "area": "email",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tenho algum email novo hoje"
+   }
+  ],
+  "espera": {
+   "tag": "GMAIL"
+  },
+  "nunca": [
+   "create_event",
+   "list_events"
+  ]
+ },
+ {
+  "id": "conf-cancela-pode",
+  "area": "confirmacao",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "cancela a reunião com o João amanhã"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Achei \"Reunião com João\" amanhã às 10h. Cancelo, chefe?"
+   },
+   {
+    "role": "user",
+    "content": "pode"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  },
+  "nunca": [
+   "create_event"
+  ]
+ },
+ {
+  "id": "conf-gasto-alto-sim",
+  "area": "confirmacao",
+  "origem": "f612d88",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 1500 no mercado"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?"
+   },
+   {
+    "role": "user",
+    "content": "sim, pode registrar"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 1500
+   }
+  }
+ },
+ {
+  "id": "conf-gasto-alto-nao",
+  "area": "confirmacao",
+  "origem": "f612d88",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 1500 no mercado"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Registro uma despesa de R$ 1.500,00 (Mercado da semana) em Mercado?"
+   },
+   {
+    "role": "user",
+    "content": "não, deixa"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "conf-completa-conta",
+  "area": "confirmacao",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 45 no mercado hoje"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Qual conta: Carteira ou PJ?"
+   },
+   {
+    "role": "user",
+    "content": "PJ"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 45,
+    "entrada.conta": "/pj/i"
+   }
+  }
+ },
+ {
+  "id": "conf-completa-valor",
+  "area": "confirmacao",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei no mercado hoje"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Qual foi o valor?"
+   },
+   {
+    "role": "user",
+    "content": "45 reais"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 45
+   }
+  }
+ },
+ {
+  "id": "conf-briefing-sim",
+  "area": "confirmacao",
+  "conversa": [
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Quer o briefing? Posso te passar agora mesmo."
+   },
+   {
+    "role": "user",
+    "content": "sim, pode mandar"
+   }
+  ],
+  "espera": {
+   "tag": "BRIEFING"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conf-briefing-sim-nao-registra",
+  "area": "confirmacao",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Quer o briefing do dia?"
+   },
+   {
+    "role": "user",
+    "content": "PJ"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "conf-alternativa-nao-confirma",
+  "area": "confirmacao",
+  "origem": "1846e9c",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "marca reunião com o João amanhã"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Às 10h? Ou prefere à tarde?"
+   },
+   {
+    "role": "user",
+    "content": "sim"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event"
+  ]
+ },
+ {
+  "id": "conf-sim-com-nova-ordem",
+  "area": "confirmacao",
+  "origem": "1846e9c",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "cancela a reunião com o João amanhã"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Achei \"Reunião com João\" amanhã às 10h. Cancelo, chefe?"
+   },
+   {
+    "role": "user",
+    "content": "sim e marca outra sexta às 9h"
+   }
+  ],
+  "espera": {
+   "ferramenta": "list_events"
+  }
+ },
+ {
+  "id": "hub-mercado-45",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 45 no mercado"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "acao": "registrarTransacao",
+    "entrada.valorEmReais": 45,
+    "entrada.tipo": "despesa"
+   }
+  }
+ },
+ {
+  "id": "hub-mercado-semana-400",
+  "area": "myhub",
+  "origem": "a994e53",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "adiciona pra mim que eu gastei 400 no mercado essa semana"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 400
+   }
+  }
+ },
+ {
+  "id": "hub-fala-solta-rs400",
+  "area": "myhub",
+  "origem": "a994e53",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei R$400 no mercado essa semana"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 400
+   }
+  }
+ },
+ {
+  "id": "hub-luz-120",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "paguei 120 reais de luz"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 120
+   }
+  }
+ },
+ {
+  "id": "hub-freela-2mil",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "recebi 2 mil de freelance"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 2000,
+    "entrada.tipo": "receita"
+   }
+  }
+ },
+ {
+  "id": "hub-mochila-300",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "comprei uma mochila por 300"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 300
+   }
+  }
+ },
+ {
+  "id": "hub-agua-500",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "marca que bebi 500 ml de água"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "acao": "registrarCheckinHabito",
+    "entrada.habito": "/água/i"
+   }
+  }
+ },
+ {
+  "id": "hub-uber-20",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "anota que eu gastei 20 de uber"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 20
+   }
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "hub-uber-conto",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "uber de 20 conto agora"
+   }
+  ],
+  "espera": {
+   "needTools": true
+  },
+  "nunca": [
+   "memory_save"
+  ],
+  "origem": "roteador não liga o My Hub para 'conto': a rota refaz com tudo depois do [NEEDTOOLS]"
+ },
+ {
+  "id": "hub-almoco-35",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "almocei 35 reais hoje"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 35
+   }
+  }
+ },
+ {
+  "id": "hub-gasolina-lanca",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "lança 80 de gasolina"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 80,
+    "entrada.categoria": "/gasolina/i"
+   }
+  }
+ },
+ {
+  "id": "hub-cafe-virgula",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 45,50 no café"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 45.5
+   }
+  }
+ },
+ {
+  "id": "hub-gasolina-ontem-pj",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 32,90 de gasolina ontem no cartão PJ"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 32.9,
+    "entrada.conta": "/pj/i",
+    "entrada.data": "2026-09-30"
+   }
+  }
+ },
+ {
+  "id": "hub-voz-com-interrogacao",
+  "area": "myhub",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 45 no mercado?"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 45
+   }
+  }
+ },
+ {
+  "id": "hub-nao-gastei-45-gastei-50",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "não gastei 45, gastei 50 no mercado"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 50
+   }
+  }
+ },
+ {
+  "id": "hub-como-sempre-80",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "como sempre, gastei 80 no mercado"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 80
+   }
+  }
+ },
+ {
+  "id": "hub-gasto-sem-valor",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "registra um gasto no mercado"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-treino-nao-registra",
+  "area": "myhub",
+  "origem": "e33a9c7",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "terminei o treino de academia"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register",
+   "memory_save"
+  ]
+ },
+ {
+  "id": "hub-malhar-nao-e-cardio",
+  "area": "myhub",
+  "origem": "e33a9c7",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "fui malhar hoje cedo"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-consulta-mes",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quanto eu gastei esse mês"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-consulta-2025",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quanto gastei em 2025?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-consulta-saber",
+  "area": "myhub",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quero saber se gastei 200 no mercado"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-negacao",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "eu não gastei 45 no mercado, só pensei em gastar"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-nao-registra",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "não registra esse gasto de 45"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-musica-que-custou",
+  "area": "myhub",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "toca a música que eu paguei 10 reais"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY"
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-desfaz",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 40 no mercado"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Anotei, chefe: R$ 40 em Mercado."
+   },
+   {
+    "role": "user",
+    "content": "opa, errei, desfaz isso"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_undo"
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-nao-precisa-desfazer",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 40 no mercado"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Anotei, chefe: R$ 40 em Mercado."
+   },
+   {
+    "role": "user",
+    "content": "não precisa desfazer, tá certo"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "my_hub_undo",
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "hub-dois-gastos",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "gastei 30 de uber e 50 no mercado"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "entrada.valorEmReais": 50
+   }
+  }
+ },
+ {
+  "id": "hub-investimento",
+  "area": "myhub",
+  "origem": "6b64953",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "comprei 10 ações de PETR4 a 35 reais"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register",
+   "args": {
+    "acao": "registrarInvestimento"
+   }
+  }
+ },
+ {
+  "id": "mem-lembra-carro",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "lembra que meu carro agora é um corolla"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_save",
+   "args": {
+    "content": "/corolla/i"
+   }
+  }
+ },
+ {
+  "id": "mem-guarda-jazz",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "guarda que eu gosto de jazz"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_save",
+   "args": {
+    "content": "/jazz/i"
+   }
+  }
+ },
+ {
+  "id": "mem-memoriza-aniversario",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "memoriza isso: meu aniversário é em março"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_save",
+   "args": {
+    "content": "/mar[cç]o/i"
+   }
+  }
+ },
+ {
+  "id": "mem-so-pra-saber",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "só pra você saber, eu prefiro respostas curtas"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_save",
+   "args": {
+    "content": "/curta/i"
+   }
+  }
+ },
+ {
+  "id": "mem-anota-alergia",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "anota que eu sou alérgico a camarão"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_save",
+   "args": {
+    "content": "/camar[aã]o/i"
+   }
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "mem-grava-coentro",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "toma nota: eu odeio coentro"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_save",
+   "args": {
+    "content": "/coentro/i"
+   }
+  }
+ },
+ {
+  "id": "mem-esquece-civic",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "esquece aquela história do civic"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_forget"
+  }
+ },
+ {
+  "id": "mem-esquece-jazz",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "esquece que eu gosto de jazz"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_forget",
+   "args": {
+    "query": "/jazz/i"
+   }
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-pare-de-lembrar",
+  "area": "memoria",
+  "origem": "560e29d",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "pare de lembrar que eu fumo"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_forget"
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-pergunta-lista",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que você sabe sobre mim?"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_list"
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-quais-memorias",
+  "area": "memoria",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quais memórias você tem"
+   }
+  ],
+  "espera": {
+   "ferramenta": "memory_list"
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-nao-guarda",
+  "area": "memoria",
+  "origem": "560e29d",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "não guarda isso, foi só um desabafo"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-esquece-deixa",
+  "area": "memoria",
+  "origem": "560e29d",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "esquece, deixa pra lá"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "mem-lembra-pergunta",
+  "area": "memoria",
+  "origem": "560e29d",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "você lembra que eu te falei do projeto novo?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-gasto-nao-e-memoria",
+  "area": "memoria",
+  "origem": "e39115c",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "anota que gastei 45 no mercado"
+   }
+  ],
+  "espera": {
+   "ferramenta": "my_hub_register"
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-dentista-nao-e-memoria",
+  "area": "memoria",
+  "origem": "e39115c; roteador não liga a agenda aqui: a rota refaz com tudo depois do [NEEDTOOLS]",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "anota que amanhã tenho dentista às 15h"
+   }
+  ],
+  "espera": {
+   "needTools": true
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "mem-salva-no-drive",
+  "area": "memoria",
+  "origem": "560e29d",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "salva isso no drive pra mim"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "memory_save"
+  ]
+ },
+ {
+  "id": "spot-toca-drake",
+  "area": "spotify",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "toca algo do Drake"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY",
+   "conteudo": "/drake/i"
+  }
+ },
+ {
+  "id": "spot-coldplay",
+  "area": "spotify",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "coloca aquela do Coldplay pra mim"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY",
+   "conteudo": "/coldplay/i"
+  }
+ },
+ {
+  "id": "spot-rock",
+  "area": "spotify",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "bota um rock aí pra mim"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY",
+   "conteudo": "/play/"
+  }
+ },
+ {
+  "id": "spot-pausa",
+  "area": "spotify",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "pausa a música aí"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY",
+   "conteudo": "/pause/"
+  }
+ },
+ {
+  "id": "spot-proxima",
+  "area": "spotify",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "passa pra próxima música"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY",
+   "conteudo": "/next/"
+  }
+ },
+ {
+  "id": "spot-abaixa",
+  "area": "spotify",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "abaixa um pouco aí por favor"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY",
+   "conteudo": "/volume/"
+  }
+ },
+ {
+  "id": "spot-playlist-comprada",
+  "area": "spotify",
+  "origem": "c15a610",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "coloca a playlist que eu comprei por 20 reais"
+   }
+  ],
+  "espera": {
+   "tag": "SPOTIFY"
+  },
+  "nunca": [
+   "my_hub_register"
+  ]
+ },
+ {
+  "id": "timer-10min",
+  "area": "timer",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "põe um timer de 10 minutos"
+   }
+  ],
+  "espera": {
+   "tag": "TIMER",
+   "conteudo": "/\"minutes\":\\s*10/"
+  }
+ },
+ {
+  "id": "timer-pomodoro",
+  "area": "timer",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "começa um pomodoro"
+   }
+  ],
+  "espera": {
+   "tag": "TIMER",
+   "conteudo": "/25/"
+  }
+ },
+ {
+  "id": "timer-avisa-20",
+  "area": "timer",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me avisa daqui 20 min por favor"
+   }
+  ],
+  "espera": {
+   "tag": "TIMER",
+   "conteudo": "/20/"
+  }
+ },
+ {
+  "id": "timer-cancela",
+  "area": "timer",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "cancela o timer"
+   }
+  ],
+  "espera": {
+   "tag": "TIMER",
+   "conteudo": "/cancel/"
+  },
+  "nunca": [
+   "delete_event"
+  ]
+ },
+ {
+  "id": "timer-quanto-falta",
+  "area": "timer",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quanto tempo falta no timer?"
+   }
+  ],
+  "espera": {
+   "tag": "TIMER",
+   "conteudo": "/status/"
+  }
+ },
+ {
+  "id": "email-importante",
+  "area": "email",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tem algum email importante?"
+   }
+  ],
+  "espera": {
+   "tag": "GMAIL",
+   "conteudo": "/summary/"
+  }
+ },
+ {
+  "id": "email-le-maria",
+  "area": "email",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "lê o da Maria pra mim"
+   }
+  ],
+  "espera": {
+   "tag": "GMAIL",
+   "conteudo": "/read/"
+  }
+ },
+ {
+  "id": "email-banco",
+  "area": "email",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que diz o email do banco?"
+   }
+  ],
+  "espera": {
+   "tag": "GMAIL",
+   "conteudo": "/banco/i"
+  }
+ },
+ {
+  "id": "gh-prs",
+  "area": "github",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tem algum PR aberto?"
+   }
+  ],
+  "espera": {
+   "tag": "GITHUB",
+   "conteudo": "/prs/"
+  }
+ },
+ {
+  "id": "gh-issues",
+  "area": "github",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quais issues tenho?"
+   }
+  ],
+  "espera": {
+   "tag": "GITHUB",
+   "conteudo": "/issues/"
+  }
+ },
+ {
+  "id": "gh-commits",
+  "area": "github",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "mostra os últimos commits do Beto"
+   }
+  ],
+  "espera": {
+   "tag": "GITHUB",
+   "conteudo": "/commits/"
+  }
+ },
+ {
+  "id": "brief-dia",
+  "area": "briefing",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me dá o resumo do dia"
+   }
+  ],
+  "espera": {
+   "tag": "BRIEFING"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "brief-meu-dia",
+  "area": "briefing",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "como tá meu dia hoje então"
+   }
+  ],
+  "espera": {
+   "tag": "BRIEFING"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ }
+]
