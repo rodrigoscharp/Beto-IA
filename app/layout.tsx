@@ -8,8 +8,11 @@ export const metadata: Metadata = {
     "BETO IA — Assistente pessoal de voz e texto alimentado por IA.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: [{ url: "/icons/icon.svg?v=4", type: "image/svg+xml" }],
-    apple: [{ url: "/apple-icon.png?v=4", sizes: "180x180" }],
+    icon: [
+      { url: "/icon.png?v=5", sizes: "32x32", type: "image/png" },
+      { url: "/icons/icon-192.png?v=5", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-icon.png?v=5", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,

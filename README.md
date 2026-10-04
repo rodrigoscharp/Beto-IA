@@ -214,7 +214,7 @@ Cada push para `main` faz deploy automático.
 - **Senha única:** todas as páginas e `/api/*` exigem login (`middleware.ts`). O hash SHA-256 da senha fica em `lib/auth.ts`; a sessão é um cookie assinado (HMAC) de 30 dias. Opcional: defina `AUTH_SECRET` na Vercel para assinar com outra chave (trocar invalida as sessões). Para trocar a senha: `node -e "console.log(require('crypto').createHash('sha256').update('NOVA_SENHA').digest('hex'))"` e cole em `PASSWORD_SHA256`.
 - **Instalar no Dock (Safari):** abra a URL da Vercel → Arquivo → **Adicionar ao Dock**. No Chrome/Edge: ícone de instalar na barra de endereço.
 - **Escuta contínua:** o app mantém a tela ativa (Wake Lock), reinicia o reconhecimento de voz ao voltar o foco e tem watchdog a cada 5s. Deixe a janela aberta (pode ficar atrás de outros apps; minimizar pode pausar o navegador). No Mac, ligue **Ajustes → Teclado → Ditado** e libere o microfone para o app.
-- **Ícones:** fonte em `public/icons/icon.svg`; `npm run icons` regenera os PNGs.
+- **Ícones:** fonte em `scripts/assets/beto-3d.png` (render do próprio mascote 3D, fundo transparente); `npm run icons` compõe no fundo preto e regenera os PNGs e o favicon.
 - **Vercel:** `SPOTIFY_REDIRECT_URI` e `GOOGLE_REDIRECT_URI` devem apontar para o domínio de produção (e estar cadastradas nos dashboards do Spotify/Google).
 
 ## Como os comandos de voz funcionam
