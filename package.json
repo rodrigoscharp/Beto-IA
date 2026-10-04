@@ -9,7 +9,7 @@
     "lint": "next lint",
     "test": "node --import ./scripts/register-ts.mjs --test scripts/*.test.mjs",
     "eval": "node --import ./scripts/register-ts.mjs scripts/eval/run.mjs",
-    "test:face": "node --test scripts/face.test.mjs",
+    "test:mascot": "node --import ./scripts/register-ts.mjs --test scripts/mascot.test.mjs scripts/emotion.test.mjs",
     "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
@@ -19,12 +19,14 @@
     "next": "^14.2.30",
     "react": "^18",
     "react-dom": "^18",
+    "three": "^0.184.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/three": "^0.186.0",
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
