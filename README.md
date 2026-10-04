@@ -36,7 +36,7 @@ A interface é o Beto em pessoa: um mascote 3D, o Fantasminha, que reage ao que 
 - Ativação por palavra-chave: "Beto", "Ei Beto", "Olá Beto"
 - Personalidade de brother e empresário parceiro — direto no trabalho, leve na resenha, e sabe quando cada tom cabe
 - Reconhecimento em português via Web Speech API (Chrome/Edge)
-- Síntese de voz com ElevenLabs (voz Adam, grave) — fallback para Speech Synthesis nativa
+- Síntese de voz com ElevenLabs (voz Will, leve e jovem, combinando com o mascote) — fallback para Speech Synthesis nativa
 - Histórico de contexto das últimas 20 mensagens por sessão
 
 **Integrações**
@@ -178,7 +178,7 @@ Copie `.env.local.example` para `.env.local` e preencha:
 |----------|-----------|:-----------:|
 | `GROQ_API_KEY` | Chave da API do Groq (LLM) | ✅ |
 | `ELEVENLABS_API_KEY` | Chave da API do ElevenLabs (TTS) | ✅ |
-| `ELEVENLABS_VOICE_ID` | ID da voz no ElevenLabs (ex: `pNInz6obpgDQGcFmaJgB` para Adam) | ✅ |
+| `ELEVENLABS_VOICE_ID` | ID da voz no ElevenLabs (padrão: `bIHbv24MWmeRgasZH58o`, Will) | — |
 | `SUPABASE_URL` | URL do seu projeto Supabase | ✅ |
 | `SUPABASE_ANON_KEY` | Chave pública do Supabase | ✅ |
 | `SPOTIFY_CLIENT_ID` | Client ID do app Spotify | ⬜ |
@@ -312,7 +312,7 @@ jarvis/
 
 - **Web Speech API**: funciona bem no Chrome e Edge. Firefox e Safari têm suporte parcial ou ausente
 - **Spotify**: requer conta **Premium** para controle de playback via API
-- **ElevenLabs plano gratuito**: 3 vozes disponíveis (Adam, Arnold, Antoni) e limite mensal de caracteres
+- **ElevenLabs plano gratuito**: só as vozes prontas da ElevenLabs (Will, Liam, Charlie...) e limite mensal de caracteres
 - **OAuth Google**: em modo de teste, a tela de consentimento exibe aviso; publique o app no Google para remover
 
 ---

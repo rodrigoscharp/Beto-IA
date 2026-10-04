@@ -101,7 +101,8 @@ function greetingKind(text: string): GreetingKind | null {
 }
 
 const GREETING_PHRASES: string[] = Object.values(GREETINGS).flatMap(v => [...v]);
-const GREETING_CACHE = "beto-fillers-v2";   // nome antigo mantido de propósito: trocar regeraria os áudios e gastaria cota da ElevenLabs
+const GREETING_CACHE = "beto-fillers-v3";   // muda junto com a voz do TTS: o nome novo regera as 11 saudações (pouca cota) com a voz nova
+const OLD_GREETING_CACHES = ["beto-fillers-v2"];   // caches de vozes antigas, apagados na abertura
 const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começar a tocar a resposta
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
@@ -369,6 +370,7 @@ export default function JarvisPage() {
   async function prefetchGreetings() {
     if (typeof caches === "undefined") return;
     try {
+      await Promise.all(OLD_GREETING_CACHES.map(name => caches.delete(name)));
       const cache = await caches.open(GREETING_CACHE);
       for (const text of GREETING_PHRASES) {
         const key = `/__filler/${encodeURIComponent(text)}`;   // prefixo antigo mantido: é a chave do cache já gravado nos aparelhos
