@@ -26,7 +26,7 @@ Assistente pessoal de voz e texto, sci-fi, com simpatia e sotaque, rodando no se
 
 Um assistente pessoal que você hospeda. Sem assinaturas, sem dados de terceiros, sem rastreamento. Você conecta suas próprias contas (Spotify, Google, GitHub) e o Beto passa a controlar tudo por voz.
 
-A interface é uma tela escura com um orbe 3D animado que reage ao que você está fazendo — ouvindo, processando, falando. A voz usa [ElevenLabs](https://elevenlabs.io) para síntese realista e [Groq](https://groq.com) para inferência rápida do LLM.
+A interface é o Beto em pessoa: um mascote 3D, o Fantasminha, que reage ao que está acontecendo — dorme esperando o nome dele, fica atento ouvindo, pensa de óculos e prancheta, fala com a emoção da resposta, acena nas saudações, avisa notificações e vira DJ quando o Spotify toca. A voz usa [ElevenLabs](https://elevenlabs.io) para síntese realista e [Groq](https://groq.com) para inferência rápida do LLM.
 
 ---
 
@@ -48,7 +48,7 @@ A interface é uma tela escura com um orbe 3D animado que reage ao que você est
 - **Memória persistente** — salva preferências, fatos e tarefas no Supabase
 
 **Interface**
-- Orbe 3D com 320 partículas (distribuição de Fibonacci, projeção perspectiva)
+- Mascote 3D Fantasminha (three.js) com expressões, aceno, notificação e modo DJ; modo claro e escuro
 - Mini player do Spotify com controles e barra de progresso
 - Tipografia futurista: Orbitron + Share Tech Mono
 - Grid animado, glow cyan, totalmente responsivo
@@ -281,7 +281,7 @@ jarvis/
 │   ├── layout.tsx
 │   └── page.tsx               # Interface principal e lógica de voz
 ├── components/
-│   ├── Orb.tsx                # Orbe 3D animado (canvas)
+│   ├── mascot/                # Fantasminha 3D: modelo (ghost.ts), mapeamento de estados e palco (BetoGhost.tsx)
 │   └── MiniPlayer.tsx         # Mini player do Spotify
 ├── lib/
 │   ├── google.ts              # Gerenciamento de tokens Google

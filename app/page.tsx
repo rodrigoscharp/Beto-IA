@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import Orb, { OrbState } from "@/components/Orb";
-import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion } from "@/components/face";
+import dynamic from "next/dynamic";
+import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion, type VoiceState } from "@/lib/emotion";
 import { claimsWrite, needsTools, wantsCalendarWrite, wantsMemoryForget, wantsMemorySave, wantsMyHubWrite } from "@/lib/intent";
 import { ReplyStream, type StreamEvent } from "@/lib/replystream";
 import { SpeechQueue } from "@/lib/speechqueue";
@@ -12,6 +12,9 @@ import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
 import { usePush } from "@/components/usePush";
 import { resolveEmailRef, type ListedEmail } from "@/lib/gmail-text";
+
+/* Mascote 3D (three.js): só no cliente, fora do bundle do servidor. */
+const BetoGhost = dynamic(() => import("@/components/mascot/BetoGhost"), { ssr: false });
 
 /* ══════════════════════════════════════════════════════════════════════════
    Types
@@ -155,7 +158,7 @@ export default function JarvisPage() {
 
   /* ── State ───────────────────────────────────────────────────────────── */
 
-  const [orbState,     setOrbState]     = useState<OrbState>("wake");
+  const [orbState,     setOrbState]     = useState<VoiceState>("wake");
   const [emotion,      setEmotion]      = useState<Emotion>("neutro");
   const [typing,       setTyping]       = useState(false);   // caixa de texto aberta
   const [typedText,    setTypedText]    = useState("");
@@ -165,6 +168,9 @@ export default function JarvisPage() {
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
   const [audioReady,   setAudioReady]   = useState(false);
   const [theme,        toggleTheme]     = useTheme();
+  const [music,        setMusic]        = useState(false);   // Spotify tocando: ocioso, o mascote vira DJ
+  const [waveSignal,   setWaveSignal]   = useState(0);       // cada incremento = um aceno (saudação)
+  const [notifySignal, setNotifySignal] = useState(0);       // cada incremento = animação de notificação (aviso proativo)
   const push = usePush();
 
   const mode           = useRef<Mode>("idle");
@@ -206,6 +212,7 @@ export default function JarvisPage() {
       try { wakeRec.current?.abort(); } catch { /* ok */ }
       wakeRec.current = null;
       clearRestartTimer();
+      setNotifySignal(n => n + 1);
       speak(sanitize(text), () => { onDone(); setMode("wake"); setTimeout(startWake, 300); });
     },
   });
@@ -913,6 +920,7 @@ export default function JarvisPage() {
       turnVia.current = "greeting";
       const options = GREETINGS[greeting];
       const reply   = options[Math.floor(Math.random() * options.length)]!;
+      setWaveSignal(n => n + 1);
       // Saudação não passa pelo modelo, então não tem tag: o rosto é alegre e o histórico leva a tag para o modelo ver o formato.
       history.current = [...history.current, { role: "user", content: text }, { role: "assistant", content: `[emo:alegre] ${reply}` }];
       const after = () => {
@@ -1170,7 +1178,7 @@ export default function JarvisPage() {
       return;
     }
 
-    // wake mode: tap orb to skip wake word and go straight to listening
+    // wake mode: tap the mascot to skip wake word and go straight to listening
     try { wakeRec.current?.abort(); } catch { /* ok */ }
     wakeRec.current = null;
     clearRestartTimer();
@@ -1187,9 +1195,10 @@ export default function JarvisPage() {
 
   return (
     <main style={{ position: "fixed", inset: 0, background: "var(--bg)" }}>
-      <Orb state={orbState} emotion={emotion} talking={talking} onClick={handleClick} theme={theme} />
+      <BetoGhost state={orbState} emotion={emotion} talking={talking} onClick={handleClick} theme={theme}
+        music={music} waveSignal={waveSignal} notifySignal={notifySignal} />
 
-      <MiniPlayer onCommand={handleSpotifyCommand} onPlaying={(p) => { musicPlaying.current = p; }} />
+      <MiniPlayer onCommand={handleSpotifyCommand} onPlaying={(p) => { musicPlaying.current = p; setMusic(p); }} />
 
       {/* Status badge — top left */}
       <div className="beto-chrome" style={{
