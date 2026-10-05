@@ -13,6 +13,7 @@ import { MEMORY_TOOLS, executeMemoryTool, type MemoryCtx } from "@/lib/tools/mem
 import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 import { planTurn, type ToolSets } from "@/lib/turnplan";
+import { encodeLine, type WireLine, type WireMeta } from "@/lib/voicewire";
 
 type Memories = { content: string; category: string }[];
 type Msg = { role: string; content: string };
@@ -239,6 +240,69 @@ export async function POST(req: NextRequest) {
     // Conversa simples não precisa do My Hub: pula a ida ao servidor dele.
     const [memories, myhub] = await Promise.all([getCachedMemories(), mode === "full" ? getMyHubContext() : Promise.resolve(null)]);
     const ctxMs = Date.now() - t0;
+
+    // Serviço local de voz: uma linha JSON por evento (lib/voicewire.ts). A decisão de rota é toda daqui: turno com
+    // ferramentas vai pelo caminho completo (sem stream) e sai numa linha só; conversa sai em stream do modelo.
+    if (stream === "ndjson") {
+      const encoder = new TextEncoder();
+      const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured() };
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const write = (l: WireLine) => { try { controller.enqueue(encoder.encode(encodeLine(l))); } catch { /* cliente foi embora */ } };
+          let meta: WireMeta = { mode };
+          let chars = 0, steps = 1, retried = false, tools: string[] = [];
+          const viaTools = async (sets: ToolSets) => {
+            const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
+            meta = {
+              mode: "full",
+              ...(r.needsLogin ? { needsGoogleLogin: true } : {}),
+              ...(r.acted ? { usedTools: true } : {}),
+              ...(r.undo === "clear" ? { undoCleared: true } : r.undo ? { undo: r.undo } : {}),
+            };
+            tools = r.tools; steps = r.steps;
+            return r.text;
+          };
+          try {
+            if (plan.sets) {
+              const text = await viaTools(plan.sets);
+              chars = text.length;
+              write({ t: text });
+            } else {
+              const { gen, head, mode: usedMode, retried: r1 } = await openReply(apiKey, messages, mode, memories, myhub);
+              retried = r1;
+              meta.mode = usedMode;
+              let full = head;
+              write({ t: head });
+              try {
+                for await (const piece of gen) { full += piece; write({ t: piece }); }
+              } finally {
+                await gen.return().catch(() => {});
+              }
+              chars = full.length;
+              const wantsWrite = wantsCalendarWrite(messages) || wantsMyHubWrite(messages) || wantsMemorySave(messages) || wantsMemoryForget(messages);
+              if (detectNeedTools(full) === "yes" || (claimsWrite(full) && wantsWrite)) {
+                // Sem ferramentas o modelo pediu [NEEDTOOLS] (nunca falado) ou disse que fez sem fazer: refaz com todas.
+                retried = true;
+                write({ retry: true });
+                const text = await viaTools(everything);
+                chars += text.length;
+                write({ t: text });
+              }
+            }
+          } catch (e) {
+            console.error("[Beto API] ndjson:", e);
+            write({ t: "Desculpe, houve um erro na comunicação." });
+          } finally {
+            write({ meta });
+            logMetric({ mode: meta.mode, stream: "ndjson", model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars, retried, steps, tools });
+            try { controller.close(); } catch { /* já fechado */ }
+          }
+        },
+      });
+      return new NextResponse(body, {
+        headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
 
     if (stream === true) {
       const { gen, head, mode: usedMode, retried } = await openReply(apiKey, messages, mode, memories, myhub);

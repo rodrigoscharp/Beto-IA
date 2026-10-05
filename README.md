@@ -192,6 +192,8 @@ Copie `.env.local.example` para `.env.local` e preencha:
 | `GITHUB_DEFAULT_REPO` | Repositório padrão para consultas | ⬜ |
 | `OPENWEATHER_API_KEY` | Chave da OpenWeather (briefing matinal) | ⬜ |
 | `OPENWEATHER_CITY` | Cidade para previsão do tempo | ⬜ |
+| `VOICE_SERVICE_TOKEN` | Token do serviço local de voz (`voice/`) para chamar `/api/chat` | ⬜ |
+| `NEXT_PUBLIC_VOICE_URL` | Onde o navegador procura o serviço local (padrão `http://localhost:7860`) | ⬜ |
 
 ---
 
@@ -216,6 +218,20 @@ Cada push para `main` faz deploy automático.
 - **Escuta contínua:** o app mantém a tela ativa (Wake Lock), reinicia o reconhecimento de voz ao voltar o foco e tem watchdog a cada 5s. Deixe a janela aberta (pode ficar atrás de outros apps; minimizar pode pausar o navegador). No Mac, ligue **Ajustes → Teclado → Ditado** e libere o microfone para o app.
 - **Ícones:** fonte em `scripts/assets/beto-3d.png` (render do próprio mascote 3D, fundo transparente); `npm run icons` compõe no fundo preto e regenera os PNGs e o favicon.
 - **Vercel:** `SPOTIFY_REDIRECT_URI` e `GOOGLE_REDIRECT_URI` devem apontar para o domínio de produção (e estar cadastradas nos dashboards do Spotify/Google).
+
+## Voz local (serviço no Mac)
+
+A Web Speech API corta frases nas pausas e erra nomes próprios. O serviço em `voice/` (Python, Pipecat) troca isso
+por Silero VAD + smart-turn v3 (fim de fala semântico), Whisper large-v3-turbo local via MLX com o seu vocabulário
+(`voice/beto-voice.toml`), ElevenLabs em streaming e barge-in (falar por cima interrompe). O cérebro continua sendo o
+`/api/chat`, chamado com o token `VOICE_SERVICE_TOKEN`.
+
+```bash
+cd voice && cp .env.example .env && uv sync && uv run beto-voice
+```
+
+Com o serviço no ar, o app mostra `BETO · VOZ LOCAL` e deixa a Web Speech de lado; sem ele, nada muda. Detalhes,
+parâmetros e limitações em `voice/README.md`.
 
 ## Como os comandos de voz funcionam
 

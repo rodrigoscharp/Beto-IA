@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>beto-voice dev</title>
+  <style>
+    body { font-family: ui-monospace, Menlo, monospace; background: #111; color: #ddd; margin: 0; padding: 20px; }
+    h1 { font-size: 16px; margin: 0 0 12px; }
+    button { font: inherit; padding: 8px 14px; margin-right: 8px; background: #222; color: #ddd; border: 1px solid #444; border-radius: 6px; cursor: pointer; }
+    #state { margin: 12px 0; color: #8fd; }
+    #log { white-space: pre-wrap; font-size: 12px; line-height: 1.5; max-height: 70vh; overflow: auto; border-top: 1px solid #333; padding-top: 8px; }
+    .u { color: #fd8; } .b { color: #8df; } .s { color: #999; } .e { color: #f88; }
+  </style>
+</head>
+<body>
+  <h1>beto-voice · página de desenvolvimento</h1>
+  <button id="connect">conectar</button>
+  <button id="listen">ouvir (toque)</button>
+  <button id="interrupt">interromper</button>
+  <button id="say">dizer "teste"</button>
+  <span>segure <b>espaço</b> = push-to-talk</span>
+  <form id="textform" style="display:inline"><input id="text" placeholder="digitar para o Beto" style="font:inherit;padding:8px;background:#222;color:#ddd;border:1px solid #444;border-radius:6px;width:260px" /></form>
+  <div id="state">desconectado</div>
+  <div id="log"></div>
+  <audio id="audio" autoplay></audio>
+
+  <script type="module">
+    import { PipecatClient, RTVIEvent } from "https://esm.sh/@pipecat-ai/client-js@1.13.1";
+    import { SmallWebRTCTransport } from "https://esm.sh/@pipecat-ai/small-webrtc-transport@1.10.8";
+
+    const $ = (id) => document.getElementById(id);
+    const log = (cls, text) => { const d = document.createElement("div"); d.className = cls; d.textContent = `${new Date().toLocaleTimeString()} ${text}`; $("log").prepend(d); };
+    const state = (s) => { $("state").textContent = s; };
+
+    let client = null;
+    const transport = new SmallWebRTCTransport();
+    client = new PipecatClient({
+      transport,
+      enableMic: true,
+      enableCam: false,
+      callbacks: {
+        onConnected: () => state("conectado"),
+        onDisconnected: () => state("desconectado"),
+        onBotReady: () => state("bot pronto · diga \"ei Beto\""),
+        onUserStartedSpeaking: () => log("s", "[vad] você começou a falar"),
+        onUserStoppedSpeaking: () => log("s", "[vad] você parou"),
+        onUserTranscript: (d) => log("u", `${d.final ? "você" : "você (parcial)"}: ${d.text}`),
+        onBotLlmStarted: () => log("s", "[llm] pensando"),
+        onBotTtsText: (d) => log("b", `beto: ${d.text}`),
+        onBotStartedSpeaking: () => state("beto falando"),
+        onBotStoppedSpeaking: () => state("ouvindo (follow-up)"),
+        onServerMessage: (d) => log("s", `[servidor] ${JSON.stringify(d)}`),
+        onError: (m) => log("e", `[erro] ${JSON.stringify(m)}`),
+        onTrackStarted: (track, participant) => { if (track.kind === "audio" && !participant?.local) $("audio").srcObject = new MediaStream([track]); },
+      },
+    });
+
+    $("connect").onclick = async () => {
+      try {
+        await client.connect({ webrtcRequestParams: { endpoint: `${location.origin}/api/offer` } });
+      } catch (e) { log("e", `conexão: ${e.message}`); }
+    };
+    $("listen").onclick = () => client.sendClientMessage("listen", {});
+    $("interrupt").onclick = () => client.sendClientMessage("interrupt", {});
+    $("say").onclick = () => client.sendClientMessage("say", { text: "Teste de voz, chefe." });
+    $("textform").onsubmit = (e) => { e.preventDefault(); const t = $("text").value.trim(); if (t) { client.sendClientMessage("text", { text: t }); log("u", `você (digitado): ${t}`); $("text").value = ""; } };
+    let ptt = false;
+    window.addEventListener("keydown", (e) => { if (e.code === "Space" && !ptt && e.target.tagName !== "INPUT") { ptt = true; client.sendClientMessage("ptt", { down: true }); state("push-to-talk"); } });
+    window.addEventListener("keyup", (e) => { if (e.code === "Space") { ptt = false; client.sendClientMessage("ptt", { down: false }); } });
+  </script>
+</body>
+</html>

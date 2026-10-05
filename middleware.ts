@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_NAME, verifySession } from "@/lib/auth";
+import { COOKIE_NAME, verifySession, voiceTokenOk } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
+  // Serviço local de voz: token de serviço só em /api/chat (ver lib/auth.ts).
+  if (voiceTokenOk(req.headers.get("authorization"), req.nextUrl.pathname, process.env.VOICE_SERVICE_TOKEN)) {
+    return NextResponse.next();
+  }
   if (await verifySession(req.cookies.get(COOKIE_NAME)?.value)) {
     return NextResponse.next();
   }

@@ -29,6 +29,17 @@ export async function verifyPassword(input: string) {
   return safeEqual(await sha256Hex(input), PASSWORD_SHA256);
 }
 
+/* Serviço local de voz: fala com /api/chat por token (ele não tem o cookie do navegador). Só esse caminho, só com
+   VOICE_SERVICE_TOKEN definido e com pelo menos 16 chars (um token curto demais vale como nenhum). */
+export const VOICE_TOKEN_PATHS = new Set(["/api/chat"]);
+
+export function voiceTokenOk(authHeader: string | null, pathname: string, token: string | undefined): boolean {
+  if (!token || token.length < 16) return false;
+  if (!VOICE_TOKEN_PATHS.has(pathname)) return false;
+  const m = /^Bearer\s+(\S+)$/i.exec(authHeader ?? "");
+  return !!m && safeEqual(m[1], token);
+}
+
 /* AUTH_SECRET é obrigatório em produção. O hash da senha está neste repositório (público): usá-lo como chave
    deixaria qualquer um forjar um cookie de sessão válido. O fallback existe só para rodar em desenvolvimento. */
 function signingSecret(): string {
