@@ -305,7 +305,7 @@ wheels = [
 [[package]]
 name = "beto-voice"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "httpx" },
     { name = "pipecat-ai", extra = ["local-smart-turn", "mlx-whisper", "runner", "webrtc", "whisper"] },
