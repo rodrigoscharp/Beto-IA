@@ -11,6 +11,8 @@ import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
 import { usePush } from "@/components/usePush";
+import { useVoiceLink } from "@/components/useVoiceLink";
+import type { ServerMsg } from "@/lib/voicelink";
 import { resolveEmailRef, type ListedEmail } from "@/lib/gmail-text";
 
 /* Mascote 3D (three.js): só no cliente, fora do bundle do servidor. */
@@ -200,6 +202,81 @@ export default function JarvisPage() {
   const musicPlaying   = useRef(false);
   const undoRef        = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);   // último registro desfazível do My Hub (o servidor devolve; o navegador reenvia)
   const lastEmails     = useRef<ListedEmail[]>([]);
+  const voiceLocalRef  = useRef(false);                                           // serviço local de voz (voice/) conectado
+  const pendingEmotion = useRef<Emotion>("neutro");                               // emoção da resposta em curso (voz local)
+
+  /* ── Serviço local de voz (voice/, Pipecat): quando ele está no ar, a Web Speech fica de fora ──
+     Estados do mascote, legenda e emoção vêm dos eventos do serviço; as tags de ação continuam executadas aqui. */
+  const { active: voiceLocal, link } = useVoiceLink({
+    onReady: () => { setMode("wake"); setCaption(""); },
+    onUserSpeaking: (s) => { if (s && mode.current !== "speaking") setMode("listening"); },
+    onTranscript: (t) => setCaption(t),
+    onThinking: () => { setMode("thinking"); turnT0.current = performance.now(); turnVia.current = "stream"; },
+    onBotSpeaking: (s) => {
+      if (s) { setMode("speaking"); setEmotion(pendingEmotion.current); setTalking(true); firstSound(); }
+      else { setTalking(false); setCaption(""); setMode("wake"); refreshQuota(); }
+    },
+    onBotText: (t) => setCaption(t),
+    onServerMessage: (m) => { void handleServerMessage(m); },
+    onDisconnected: () => { setMode("wake"); startWake(); },
+  });
+
+  useEffect(() => {
+    voiceLocalRef.current = voiceLocal;
+    if (voiceLocal) { stopAll(); setMode("wake"); setCaption(""); }
+    else if (mode.current === "wake") startWake();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceLocal]);
+
+  /* Push-to-talk: barra de espaço segurada (fora da caixa de texto). */
+  useEffect(() => {
+    if (!voiceLocal || !link) return;
+    let down = false;
+    const isTyping = (e: KeyboardEvent) => (e.target as HTMLElement | null)?.tagName === "INPUT";
+    const onDown = (e: KeyboardEvent) => { if (e.code === "Space" && !down && !isTyping(e)) { down = true; e.preventDefault(); link.ptt(true); setMode("listening"); } };
+    const onUp   = (e: KeyboardEvent) => { if (e.code === "Space" && down) { down = false; link.ptt(false); } };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceLocal, link]);
+
+  async function handleServerMessage(m: ServerMsg) {
+    switch (m.type) {
+      case "emotion":
+        pendingEmotion.current = m.emotion;
+        if (mode.current === "speaking") setEmotion(m.emotion);
+        return;
+      case "state":
+        setMode(m.state === "listening" ? "listening" : "wake");
+        setCaption("");
+        return;
+      case "needs_login":
+        if (m.service === "google") window.location.href = "/api/calendar/login";
+        return;
+      case "action": {
+        const result = await runAction(m.tag, m.payload);
+        if (result) link?.say(sanitize(result));
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  /** Executa uma tag de ação e devolve o texto a falar (ou null se a tag não existe). */
+  async function runAction(tag: string, payload: Record<string, unknown>): Promise<string | null> {
+    if (typeof payload.action !== "string" && tag !== "BRIEFING") return null;
+    const p = payload as unknown;
+    switch (tag) {
+      case "SPOTIFY":  return execSpotify(p as SpotifyAction);
+      case "GITHUB":   return execGithub(p as GithubAction);
+      case "GMAIL":    return execGmail(p as GmailAction);
+      case "TIMER":    return execTimer(p as TimerAction);
+      case "BRIEFING": return execBriefing();
+      default:         return null;
+    }
+  }
 
   /* ── Avisos proativos: o Beto fala sozinho (email, agenda, My Hub, GitHub) ── */
 
@@ -531,6 +608,8 @@ export default function JarvisPage() {
     window.speechSynthesis?.cancel();
     // Nada para falar (ex.: a resposta veio só com a tag de emoção): segue o fluxo sem ficar mudo em "speaking".
     if (!text.trim()) { onDone(); return; }
+    // Voz local: quem fala é o serviço (aviso proativo, fim de timer); o estado volta pelos eventos dele.
+    if (voiceLocalRef.current && link) { pendingEmotion.current = emotion; link.say(text); onDone(); return; }
     setMode("speaking");
     setEmotion(emotion);
     setTalking(false);
@@ -849,7 +928,7 @@ export default function JarvisPage() {
 
   function startWake() {
     clearRestartTimer();
-    if (mode.current !== "wake") return;
+    if (mode.current !== "wake" || voiceLocalRef.current) return;   // com o serviço local, o wake word é dele
     const API = getSR();
     if (!API) return;
     try { wakeRec.current?.abort(); } catch { /* ok */ }
@@ -1149,12 +1228,22 @@ export default function JarvisPage() {
     if (mode.current === "thinking") return;   // já está respondendo: ignora em vez de embaralhar dois turnos
     stopAll();                                 // para o ouvinte do wake word e qualquer fala em andamento
     setCaption("");
+    if (voiceLocalRef.current && link) { setMode("thinking"); link.sendText(t); return; }
     void sendToJarvis(t, { typed: true });
   }
 
   function handleClick() {
     const m = mode.current;
     if (m === "thinking") return;
+
+    if (voiceLocalRef.current && link) {
+      // Serviço local: toque cala o Beto, ou abre a escuta sem precisar do wake word.
+      if (m === "speaking") { link.interrupt(); return; }
+      if (m === "listening") return;
+      link.listen();
+      setMode("listening");
+      return;
+    }
 
     if (m === "speaking") {
       window.speechSynthesis?.cancel();
@@ -1188,6 +1277,7 @@ export default function JarvisPage() {
   }
 
   async function logout() {
+    link?.end();
     stopAll();
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
@@ -1210,7 +1300,7 @@ export default function JarvisPage() {
         letterSpacing: "0.15em", textTransform: "uppercase",
         pointerEvents: "none", userSelect: "none",
       }}>
-        BETO · ONLINE
+        BETO · {voiceLocal ? "VOZ LOCAL" : "ONLINE"}
       </div>
 
       {/* Logout — top left under badge */}
