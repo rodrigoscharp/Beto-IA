@@ -20,6 +20,7 @@
   <button id="interrupt">interromper</button>
   <button id="say">dizer "teste"</button>
   <span>segure <b>espaço</b> = push-to-talk</span>
+  <form id="textform" style="display:inline"><input id="text" placeholder="digitar para o Beto" style="font:inherit;padding:8px;background:#222;color:#ddd;border:1px solid #444;border-radius:6px;width:260px" /></form>
   <div id="state">desconectado</div>
   <div id="log"></div>
   <audio id="audio" autoplay></audio>
@@ -63,8 +64,9 @@
     $("listen").onclick = () => client.sendClientMessage("listen", {});
     $("interrupt").onclick = () => client.sendClientMessage("interrupt", {});
     $("say").onclick = () => client.sendClientMessage("say", { text: "Teste de voz, chefe." });
+    $("textform").onsubmit = (e) => { e.preventDefault(); const t = $("text").value.trim(); if (t) { client.sendClientMessage("text", { text: t }); log("u", `você (digitado): ${t}`); $("text").value = ""; } };
     let ptt = false;
-    window.addEventListener("keydown", (e) => { if (e.code === "Space" && !ptt) { ptt = true; client.sendClientMessage("ptt", { down: true }); state("push-to-talk"); } });
+    window.addEventListener("keydown", (e) => { if (e.code === "Space" && !ptt && e.target.tagName !== "INPUT") { ptt = true; client.sendClientMessage("ptt", { down: true }); state("push-to-talk"); } });
     window.addEventListener("keyup", (e) => { if (e.code === "Space") { ptt = false; client.sendClientMessage("ptt", { down: false }); } });
   </script>
 </body>
