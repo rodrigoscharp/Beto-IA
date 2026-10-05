@@ -13,6 +13,8 @@
     "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
+    "@pipecat-ai/client-js": "^1.13.1",
+    "@pipecat-ai/small-webrtc-transport": "^1.10.8",
     "@supabase/supabase-js": "^2.105.1",
     "groq-sdk": "^0.7.0",
     "msedge-tts": "^2.0.5",
