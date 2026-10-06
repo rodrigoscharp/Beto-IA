@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { groqChat, groqChatStream, groqComplete, workingModel } from "@/lib/groq";
 import { deleteMemory, listMemoriesStrict, saveMemory } from "@/lib/supabase";
-import { getMyHubContext, myHubDesfazer, myHubRegistrar, myHubWriteConfigured, type MyHubContext } from "@/lib/myhub";
+import { getMyHubContext, myHubConfigured, myHubDesfazer, myHubPlanoSecao, myHubRegistrar, myHubWriteConfigured, type MyHubContext } from "@/lib/myhub";
 import { myHubPromptBlock } from "@/lib/myhubprompt";
 import { getBrasiliaTime } from "@/lib/time";
 import { claimsWrite, userConfirmed, wantsCalendarWrite, memoryGroundText, wantsMemoryForget, wantsMemorySave, wantsMemoryTopic, wantsMyHubUndo, wantsMyHubWrite } from "@/lib/intent";
@@ -10,6 +10,7 @@ import { CALENDAR_TOOLS, executeCalendarTool, type ToolCtx } from "@/lib/tools/c
 import { GoogleApiError, googleCalendarApi } from "@/lib/tools/googlecalendar";
 import { MYHUB_TOOLS, executeMyHubTool, type MyHubCtx } from "@/lib/tools/myhub";
 import { MEMORY_TOOLS, executeMemoryTool, type MemoryCtx } from "@/lib/tools/memory";
+import { CONTENT_TOOLS, executeContentTool, type ContentCtx } from "@/lib/tools/content";
 import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 import { planTurn, type ToolSets } from "@/lib/turnplan";
@@ -23,13 +24,13 @@ function logMetric(data: Record<string, unknown>) {
   console.log("[beto-metrics]", JSON.stringify({ evt: "chat", ...data }));
 }
 
-function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean; memory?: boolean } = {}) {
+function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean; memory?: boolean; content?: boolean } = {}) {
   const t = getBrasiliaTime();
   return buildSystemPrompt(
     {
       memories,
       myhubBlock: myHubPromptBlock(myhub, t.date, { writeConfigured: myHubWriteConfigured(), tools: !!tools.myhub }),
-      date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar, memory: !!tools.memory,
+      date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar, memory: !!tools.memory, content: !!tools.content,
     },
     mode,
   );
@@ -89,9 +90,11 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
     state: { saves: 0, forgets: 0 },
   };
 
+  const contentCtx: ContentCtx = { api: myHubConfigured() ? { buscar: myHubPlanoSecao } : null, state: { calls: 0 } };
+
   let needsLogin = false;
   let acted = false;
-  const tools = [...(sets.calendar ? CALENDAR_TOOLS : []), ...(sets.myhub ? MYHUB_TOOLS : []), ...(sets.memory ? MEMORY_TOOLS : [])];
+  const tools = [...(sets.calendar ? CALENDAR_TOOLS : []), ...(sets.myhub ? MYHUB_TOOLS : []), ...(sets.memory ? MEMORY_TOOLS : []), ...(sets.content ? CONTENT_TOOLS : [])];
   const system = promptFor("full", memories, myhub, sets);
 
   const loop = (extra: LoopMsg[] = []) => runToolLoop({
@@ -111,6 +114,7 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
       try {
         const r = name.startsWith("my_hub_") ? await executeMyHubTool(name, args, hubCtx)
           : name.startsWith("memory_") ? await executeMemoryTool(name, args, memCtx)
+          : name.startsWith("content_") ? await executeContentTool(name, args, contentCtx)
           : await executeCalendarTool(name, args, calCtx);
         if (memCtx.state.changed) { _memCache = null; _memGen++; }   // a próxima conversa já enxerga o que foi guardado ou esquecido
         if ((r as { needsLogin?: boolean })?.needsLogin) needsLogin = true;
@@ -126,9 +130,9 @@ async function replyWithTools(req: NextRequest, apiKey: string, messages: Msg[],
   let result = await loop();
 
   // O modelo pediu [NEEDTOOLS] mesmo com ferramentas (ligamos só um conjunto e o pedido era de outro): liga todas, uma vez.
-  const all: ToolSets = { calendar: true, myhub: myHubWriteConfigured(), memory: memoryConfigured() };
+  const all: ToolSets = { calendar: true, myhub: myHubWriteConfigured(), memory: memoryConfigured(), content: myHubConfigured() };
   // Só se NENHUMA escrita aconteceu (leituras e recusas não têm efeito): refazer depois de gravar duplicaria o registro.
-  if (detectNeedTools(result.text) === "yes" && !acted && !hubCtx.state.uncertain && hubCtx.state.writes === 0 && (sets.calendar !== all.calendar || sets.myhub !== all.myhub || sets.memory !== all.memory)) {
+  if (detectNeedTools(result.text) === "yes" && !acted && !hubCtx.state.uncertain && hubCtx.state.writes === 0 && (sets.calendar !== all.calendar || sets.myhub !== all.myhub || sets.memory !== all.memory || !!sets.content !== !!all.content)) {
     return replyWithTools(req, apiKey, messages, memories, all, undoIn);
   }
   const calls = [...result.calls];
@@ -235,7 +239,7 @@ export async function POST(req: NextRequest) {
     const t0 = Date.now();
     // `full`: o cliente já viu o modo conversa falhar (disse que fez sem ter ferramenta) e pede o prompt completo.
     const hubOn = myHubWriteConfigured();
-    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured() }, forceFull === true);
+    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured(), content: myHubConfigured() }, forceFull === true);
     const mode: PromptMode = plan.mode;
     // Conversa simples não precisa do My Hub: pula a ida ao servidor dele.
     const [memories, myhub] = await Promise.all([getCachedMemories(), mode === "full" ? getMyHubContext() : Promise.resolve(null)]);
@@ -245,7 +249,7 @@ export async function POST(req: NextRequest) {
     // ferramentas vai pelo caminho completo (sem stream) e sai numa linha só; conversa sai em stream do modelo.
     if (stream === "ndjson") {
       const encoder = new TextEncoder();
-      const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured() };
+      const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured(), content: myHubConfigured() };
       const body = new ReadableStream<Uint8Array>({
         async start(controller) {
           const write = (l: WireLine) => { try { controller.enqueue(encoder.encode(encodeLine(l))); } catch { /* cliente foi embora */ } };
@@ -349,7 +353,7 @@ export async function POST(req: NextRequest) {
     let acted = false;      // alguma ferramenta de ESCRITA executou com sucesso (agenda ou My Hub)
     let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
-    const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured() };
+    const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured(), content: myHubConfigured() };
     const viaTools = async (sets: ToolSets) => {
       const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
       needsGoogleLogin = r.needsLogin;

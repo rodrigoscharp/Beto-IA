@@ -108,3 +108,9 @@ test("o Beto nunca inventa nada da vida do chefe: só fala do que veio nos dados
     assert.ok(!/assuma o cenário mais provável e responda\./.test(p), "o chute só vale para conhecimento geral");
   }
 });
+
+test("com content: o guia da ferramenta de plano entra e manda dar briefing falado, sem inventar roteiro", () => {
+  const p = buildSystemPrompt({ ...input, content: true }, "full");
+  for (const k of ["content_plan", "briefing", "fala por fala"]) assert.ok(p.includes(k), k);
+  assert.ok(!full.includes("━━━ PLANOS DE CONTEÚDO (FERRAMENTA)"), "sem a flag, o guia não entra");
+});

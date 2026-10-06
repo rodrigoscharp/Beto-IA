@@ -8,6 +8,17 @@ export interface MyHubPromptOpts {
   tools: boolean;
 }
 
+const PLANOS_MAX = 4000;
+
+/** Índice dos planos de conteúdo (pendências e títulos das seções). O texto de uma seção vem pela ferramenta content_plan. */
+function planosBlock(planos: unknown): string {
+  if (!Array.isArray(planos) || !planos.length) return "";
+  const raw = JSON.stringify(planos);
+  const json = raw.length > PLANOS_MAX ? `${raw.slice(0, PLANOS_MAX)}…(cortado por tamanho)` : raw;
+  return `
+PLANOS DE CONTEÚDO (índice: o que falta na checklist e os títulos das seções; o roteiro de cada seção NÃO está aqui, busque com a ferramenta content_plan quando ela estiver disponível): ${json}`;
+}
+
 /** Bloco de texto para o system prompt. `hojeIso` = YYYY-MM-DD (Brasília). */
 export function myHubPromptBlock(ctx: MyHubContext | null, hojeIso = "", opts: MyHubPromptOpts): string {
   if (!ctx) return "";
@@ -20,14 +31,16 @@ export function myHubPromptBlock(ctx: MyHubContext | null, hojeIso = "", opts: M
   // cresceria junto e um dia estouraria o modelo com o menor limite de tokens — o mesmo jeito que
   // já aconteceu uma vez. Cortado é pior que completo, mas nunca é o motivo do Beto parar de responder.
   const DADOS_MAX = 6000;
-  const dadosCompletos = JSON.stringify({ entrevistasProximas: ctx.entrevistasProximas, ...ctx.topicos });
+  // Planos de conteúdo vão num bloco próprio, com teto próprio: não podem empurrar finanças e hábitos para fora dos DADOS.
+  const { planos, ...topicos } = ctx.topicos;
+  const dadosCompletos = JSON.stringify({ entrevistasProximas: ctx.entrevistasProximas, ...topicos });
   const dados = dadosCompletos.length > DADOS_MAX ? `${dadosCompletos.slice(0, DADOS_MAX)}…(cortado por tamanho)` : dadosCompletos;
 
   const leitura = `
 
 ━━━ CONTEXTO DO MY HUB (dados reais do Rodrigo) ━━━
 O My Hub é onde o Rodrigo registra a vida dele: finanças, metas, hábitos, treinos, dieta, estudos, projetos, conteúdo, candidaturas e afazeres. Os dados abaixo estão atualizados até poucos minutos atrás (dia ${ctx.hoje}). Use-os para responder com contexto e personalizar conselhos: puxe o que for relevante ao assunto, sem despejar tudo. Os valores já vêm formatados em reais e datas dd/MM/aaaa: repita-os como estão, não faça contas. Para falar em voz alta, fale valores por extenso natural ("mil trezentos e dez reais"). Nunca invente dados que não estão aqui; se ele perguntar algo que não consta (outro mês, detalhe que não veio, ou algo cortado por tamanho), diga que não consegue ver isso agora. Transações com data futura são lançamentos recorrentes já agendados, não gastos já feitos. Sobre saúde e dinheiro, seja direto e útil, sem sermão.${missing}
-DADOS: ${dados}`;
+DADOS: ${dados}${planosBlock(planos)}`;
 
   if (!canWrite) {
     return leitura + `\nVocê só LÊ o My Hub: não consegue registrar, editar nem apagar nada lá. Se ele pedir para registrar algo, diga que por enquanto isso ele faz direto no My Hub.`;

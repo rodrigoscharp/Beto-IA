@@ -62,7 +62,8 @@ export function needsTools(messages: ChatMsg[]): boolean {
 
   if (words(text) < 3) return true;           // "sim", "quero", "a segunda": pode responder a uma oferta
   if (TOOL_WORDS.test(text)) return true;
-  if (DAY_PLAN.test(text)) return true;         // o que fazer hoje: dados reais, nunca chute
+  if (DAY_PLAN.test(text)) return true;
+  if (wantsContent(messages)) return true;     // roteiro e plano de conteúdo: ferramenta, nunca chute         // o que fazer hoje: dados reais, nunca chute
   if (wantsCalendar(messages)) return true;     // agenda: ferramentas, nunca o streaming de conversa
   if (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) return true;   // registrar no My Hub: ferramentas
   if (wantsMemory(messages)) return true;                                    // lembrar, esquecer, listar memórias: ferramentas
@@ -304,6 +305,13 @@ export function memoryGroundText(messages: ChatMsg[]): string {
   if (!last) return "";
   const ask = prevMemoryAsk(messages, last.index);
   return ask ? `${norm(messages[last.index - 1].content)} ${last.text}` : last.text;
+}
+
+/* Conteúdo: vídeo, episódio, roteiro, post. Liga a ferramenta que busca o roteiro no plano de conteúdo do My Hub. */
+const CONTENT_TOPIC = /\b(videos?|episodios?|ep\.? ?\d+|eps?|grav\w*|roteiros?|conteudos?|posts?|postar|posto|reels?|stories|saga|legenda\w*|instagram|insta|youtube|tiktok|linkedin|pautas?)\b/;
+export function wantsContent(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  return !!last && CONTENT_TOPIC.test(last.text) && !isCalendarTalk(last.text);
 }
 
 export function wantsMemory(messages: ChatMsg[]): boolean {

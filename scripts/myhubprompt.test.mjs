@@ -44,3 +44,14 @@ test("seções indisponíveis são avisadas", () => {
   const p = myHubPromptBlock({ ...ctx, indisponiveis: ["treinos"] }, "2026-10-02", { writeConfigured: true, tools: true });
   assert.ok(p.includes("treinos"));
 });
+
+test("planos de conteúdo saem dos DADOS e entram num bloco próprio (o roteiro é pela ferramenta)", () => {
+  const ctx = { hoje: "06/10/2026", entrevistasProximas: [], topicos: { financas: { saldo: "R$ 10,00" },
+    planos: [{ plano: "Marca 10K", prazo: "31/12/2026", pendentes: ["Esta semana: Gravar Ep. 2"], secoes: ["Ep. 2 — A conta"] }] }, indisponiveis: [] };
+  const b = myHubPromptBlock(ctx, "2026-10-06", { writeConfigured: false, tools: false });
+  assert.ok(b.includes("PLANOS DE CONTEÚDO"));
+  assert.ok(b.includes("Gravar Ep. 2"));
+  assert.ok(b.includes("content_plan"));
+  const dados = b.slice(b.indexOf("DADOS:"), b.indexOf("PLANOS DE CONTEÚDO"));
+  assert.ok(!dados.includes("Marca 10K"), "planos não ocupam o teto dos DADOS");
+});

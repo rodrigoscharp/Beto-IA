@@ -23,7 +23,8 @@
     "topicos": {
       "financas": { "gastoDoMes": "R$ 1.240,00", "maioresCategorias": ["Mercado", "Restaurante"] },
       "habitos": { "Beber água": "ontem 2.000 ml", "Leitura": "parado há 3 dias" },
-      "afazeres": ["Revisar proposta do cliente", "Pagar conta de luz"]
+      "afazeres": ["Revisar proposta do cliente", "Pagar conta de luz"],
+      "planos": [{ "plano": "Marca Pessoal 10K", "prazo": "31/12/2026", "pendentes": ["Esta semana: Gravar Ep. 2 (a conta)", "Esta semana: Atualizar a bio"], "secoes": ["Meta: +6.500 seguidores", "Ep. 1 — A promessa", "Ep. 2 — A conta (gravar esta semana)", "Semana padrão"] }]
     },
     "indisponiveis": []
   }
