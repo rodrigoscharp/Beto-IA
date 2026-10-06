@@ -9,7 +9,7 @@ ENV = {"VOICE_SERVICE_TOKEN": "tok", "ELEVENLABS_API_KEY": "el"}
 
 def test_le_o_toml_do_repositorio_com_os_padroes():
     cfg = load_config(env=ENV)
-    assert cfg.turn.smart_turn_stop_secs == 1.3
+    assert cfg.turn.smart_turn_stop_secs == 2.0
     assert cfg.turn.vad_stop_secs == 0.2
     assert "Muno" in cfg.stt.vocabulary
     assert cfg.stt.engine == "mlx"

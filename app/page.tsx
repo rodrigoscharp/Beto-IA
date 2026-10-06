@@ -14,6 +14,7 @@ import { usePush } from "@/components/usePush";
 import { useVoiceLink } from "@/components/useVoiceLink";
 import type { ServerMsg } from "@/lib/voicelink";
 import { resolveEmailRef, type ListedEmail } from "@/lib/gmail-text";
+import { afterWake, MAX_UTTERANCE_MS, silenceMs } from "@/lib/endpoint";
 
 /* Mascote 3D (three.js): só no cliente, fora do bundle do servidor. */
 const BetoGhost = dynamic(() => import("@/components/mascot/BetoGhost"), { ssr: false });
@@ -837,7 +838,8 @@ export default function JarvisPage() {
      Speech recognition
   ══════════════════════════════════════════════════════════════════════ */
 
-  function startActive(timeoutMs = 12000) {
+  /** `prefix`: o que ele já falou junto com o nome ("ei beto, me fala..."), para não perder o começo do pedido. */
+  function startActive(timeoutMs = 12000, prefix = "") {
     const API = getSR();
     if (!API) return;
     setMode("listening");
@@ -851,8 +853,9 @@ export default function JarvisPage() {
     rec.maxAlternatives         = 1;
 
     let captured       = false;
-    let finalSegments  = "";
-    let lastFullText   = "";
+    let finalSegments  = prefix ? prefix + " " : "";
+    let lastFullText   = prefix;
+    let heard          = false;   // já ouviu fala: o timeout deixa de ser "ninguém falou" e vira o teto da fala
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let hardTimeout:   ReturnType<typeof setTimeout>;
 
@@ -900,8 +903,16 @@ export default function JarvisPage() {
       full = full.trim();
       if (full.length < 2) return;
       lastFullText = full;
+      if (!heard) {
+        heard = true;
+        clearTimeout(hardTimeout);
+        hardTimeout = setTimeout(() => {
+          if (!captured && mode.current === "listening") { try { rec.abort(); } catch { /* ok */ } fallback(); }
+        }, MAX_UTTERANCE_MS);
+      }
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => doSubmit(full), 700);
+      // Respiro adaptativo: frase pendurada ("é, eu...", "aí ele...") espera mais antes de ir ao Beto.
+      debounceTimer = setTimeout(() => doSubmit(full), silenceMs(full));
     };
 
     rec.onerror = () => {
@@ -909,6 +920,9 @@ export default function JarvisPage() {
       clearTimeout(hardTimeout);
       fallback();
     };
+
+    // Pedido já veio junto com o nome e ele parou ali: manda depois do respiro normal, sem esperar o timeout.
+    if (prefix.length >= 2) debounceTimer = setTimeout(() => doSubmit(prefix), silenceMs(prefix));
 
     hardTimeout = setTimeout(() => {
       if (!captured && mode.current === "listening") {
@@ -918,6 +932,11 @@ export default function JarvisPage() {
     }, timeoutMs);
 
     rec.onend = () => {
+      // O navegador às vezes encerra sozinho numa pausa. Se ele ainda está no meio da frase (respiro correndo),
+      // reabre o microfone e continua juntando, em vez de mandar a frase cortada.
+      if (!captured && mode.current === "listening" && heard && debounceTimer) {
+        try { rec.start(); return; } catch { /* não reabriu: segue e manda o que tem */ }
+      }
       if (debounceTimer) clearTimeout(debounceTimer);
       clearTimeout(hardTimeout);
       if (!captured && mode.current === "listening") fallback();
@@ -957,7 +976,8 @@ export default function JarvisPage() {
           clearRestartTimer();
           // "Bom dia, Beto": a saudação veio junto com o nome; responde direto em vez de abrir o microfone e ficar esperando
           if (greetingKind(t)) { sendToJarvis(t); return; }
-          restartTimer.current = setTimeout(startActive, 150);
+          const rest = afterWake(e.results[i][0].transcript, WAKE_WORDS);
+          restartTimer.current = setTimeout(() => startActive(12000, rest), 150);
           return;
         }
       }

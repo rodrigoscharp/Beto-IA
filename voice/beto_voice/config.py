@@ -45,7 +45,7 @@ class TurnCfg:
     vad_stop_secs: float = 0.2
     vad_start_secs: float = 0.2
     vad_confidence: float = 0.7
-    smart_turn_stop_secs: float = 1.3
+    smart_turn_stop_secs: float = 2.0
     smart_turn_max_duration_secs: float = 8.0
     follow_up_secs: float = 9.0
     listen_secs: float = 12.0
