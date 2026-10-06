@@ -485,3 +485,15 @@ test("desfazer do My Hub não é ligado por fala de memória", () => {
   assert.equal(wantsMyHubUndo([U("lembra que eu moro em Curitiba"), A("Guardei que você mora em Curitiba."), U("não era isso, eu moro em Floripa")]), false);
   assert.equal(wantsMyHubUndo([U("gastei 45 no mercado"), A("Registrei a despesa."), U("errei, era 54")]), true);
 });
+
+test("perguntas sobre o que fazer hoje buscam os dados reais (nunca modo conversa, onde o Beto inventaria)", () => {
+  for (const t of [
+    "bom dia beto, o que tem pra hoje?",
+    "o que que temos a se fazer hoje?",
+    "o que a gente tem pra fazer hoje",
+    "qual a programação de hoje",
+    "o que rola hoje beto",
+    "quais são os planos pra hoje",
+    "o que falta fazer hoje",
+  ]) assert.equal(needsTools([u(t)]), true, t);
+});
