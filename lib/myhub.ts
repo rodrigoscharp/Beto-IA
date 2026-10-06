@@ -119,3 +119,24 @@ export async function myHubDesfazer(caminho: string): Promise<boolean> {
     return ok;
   } catch { return false; }
 }
+
+/** Uma seção dos planos de conteúdo (ex.: o roteiro do "Ep. 2"), buscada pelo título. null = o My Hub não respondeu. */
+export async function myHubPlanoSecao(busca: string): Promise<{ secoes: { plano: string; titulo: string; texto: string }[] } | null> {
+  if (!myHubConfigured()) return null;
+  const base = process.env.MYHUB_URL!.replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}/api/v1/service/beto-plano?${new URLSearchParams({ busca })}`, {
+      headers: { Authorization: `Bearer ${process.env.MYHUB_SERVICE_TOKEN}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(FETCH_MS),
+    });
+    if (!res.ok) {
+      console.warn(`[Beto] My Hub (plano) respondeu ${res.status}`);
+      return null;
+    }
+    const data = (await res.json()) as { secoes?: unknown };
+    return Array.isArray(data.secoes) ? { secoes: data.secoes as { plano: string; titulo: string; texto: string }[] } : null;
+  } catch {
+    return null;
+  }
+}

@@ -2169,5 +2169,52 @@
    "memory_save",
    "memory_forget"
   ]
+ },
+ {
+  "id": "conteudo-meu-video",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "e aí, sobre o meu vídeo, o que eu preciso gravar?"
+   }
+  ],
+  "espera": {
+   "ferramenta": "content_plan"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conteudo-episodio-2",
+  "area": "myhub",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me explica o episódio 2 que eu tenho que gravar"
+   }
+  ],
+  "espera": {
+   "ferramenta": "content_plan",
+   "args": {
+    "busca": "/2|dois/i"
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
  }
 ]
