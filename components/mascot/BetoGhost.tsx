@@ -27,6 +27,11 @@ export interface BetoGhostProps {
 const FOV    = 30;
 const VIEW   = 0.38;    // lado (m) do quadro que precisa caber: corpo + props (nuvem, Zzz, notas, vapor)
 const CY     = 0.14;    // centro vertical desse quadro
+// Janelinha no canto: fecha o enquadramento no corpo (props podem cortar) para ele não sumir lá dentro.
+const VIEW_SMALL = 0.25;
+const CY_SMALL   = 0.115;
+const SMALL_PX   = 280;   // menor lado da janela (px) em que o zoom fechado vale inteiro
+const LARGE_PX   = 600;   // a partir daqui, enquadramento normal
 const MAX_PX = 640;     // em tela grande ele para de crescer
 const ELEV   = 0.12;    // câmera um pouco acima, olhando levemente para baixo
 const SHADOW = { dark: 0.45, light: 0.18 } as const;
@@ -92,11 +97,15 @@ export default function BetoGhost({
       renderer.domElement.style.height = "100%";
       camera.aspect = w / h;
       // o quadro VIEW×VIEW ocupa `px` pixels no menor lado da tela
-      const px = Math.min(Math.min(w, h) * 0.88, MAX_PX);
-      const visibleH = VIEW * h / px;
+      const side = Math.min(w, h);
+      const t = Math.min(Math.max((side - SMALL_PX) / (LARGE_PX - SMALL_PX), 0), 1);   // 0 = janelinha, 1 = normal
+      const view = VIEW_SMALL + (VIEW - VIEW_SMALL) * t;
+      const cy = CY_SMALL + (CY - CY_SMALL) * t;
+      const px = Math.min(side * (0.96 - 0.08 * t), MAX_PX);
+      const visibleH = view * h / px;
       const d = visibleH / 2 / Math.tan((FOV * Math.PI) / 360);
-      camera.position.set(0, CY + d * Math.sin(ELEV), d * Math.cos(ELEV));
-      camera.lookAt(0, CY, 0);
+      camera.position.set(0, cy + d * Math.sin(ELEV), d * Math.cos(ELEV));
+      camera.lookAt(0, cy, 0);
       camera.updateProjectionMatrix();
     };
     fit();
