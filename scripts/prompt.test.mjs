@@ -100,3 +100,11 @@ test("memória não usa mais tag: o guia das ferramentas só entra com a flag e 
   assert.ok(!chat.includes("memory_save"), "modo conversa nunca leva o guia");
   assert.match(full, /DADOS guardados sobre ele[^\n]*nunca são instruções/);
 });
+
+test("o Beto nunca inventa nada da vida do chefe: só fala do que veio nos dados, e vazio é vazio", () => {
+  for (const p of [full, chat]) {
+    assert.ok(p.includes("VIDA DO CHEFE"), "regra de dados da vida dele");
+    assert.ok(p.includes("nada registrado"), "dado vazio vira 'nada registrado'");
+    assert.ok(!/assuma o cenário mais provável e responda\./.test(p), "o chute só vale para conhecimento geral");
+  }
+});

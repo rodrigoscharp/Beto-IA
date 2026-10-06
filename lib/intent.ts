@@ -37,6 +37,10 @@ const TOOL_WORDS = new RegExp(
   ].join("|") + ")\\b",
 );
 
+/* "o que tem pra hoje", "o que falta fazer hoje", "programação de hoje": pergunta sobre o dia dele. No modo conversa
+   o Beto não tem dado nenhum e acaba inventando tarefa e reunião; isso precisa sempre dos dados reais. */
+const DAY_PLAN = /\b(?:o que|oq|quais?|qual)\b.*\bhoje\b|\bfazer hoje\b|\bpra hoje\b|\bpara hoje\b|\bde hoje\b.*\b(?:programacao|planos?|pauta|pendencias?)\b|\b(?:programacao|planos?|pauta|pendencias?)\b.*\bhoje\b/;
+
 const AFFIRMATIVE = /^(sim|pode|quero|claro|manda|bora|vai|isso|ok|beleza|aham|uhum|fechado|por favor|nao|negativo)\b/;
 
 /* minúsculo, sem acento, sem a tag de emoção do histórico */
@@ -58,6 +62,7 @@ export function needsTools(messages: ChatMsg[]): boolean {
 
   if (words(text) < 3) return true;           // "sim", "quero", "a segunda": pode responder a uma oferta
   if (TOOL_WORDS.test(text)) return true;
+  if (DAY_PLAN.test(text)) return true;         // o que fazer hoje: dados reais, nunca chute
   if (wantsCalendar(messages)) return true;     // agenda: ferramentas, nunca o streaming de conversa
   if (wantsMyHubWrite(messages) || wantsMyHubUndo(messages)) return true;   // registrar no My Hub: ferramentas
   if (wantsMemory(messages)) return true;                                    // lembrar, esquecer, listar memórias: ferramentas

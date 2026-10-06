@@ -2147,5 +2147,27 @@
    "memory_save",
    "memory_forget"
   ]
+ },
+ {
+  "id": "brief-o-que-tem-hoje",
+  "area": "briefing",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "bom dia beto, o que tem pra hoje?"
+   }
+  ],
+  "espera": {
+   "tag": "BRIEFING"
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
  }
 ]

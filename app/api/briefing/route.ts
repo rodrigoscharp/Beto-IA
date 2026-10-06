@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { groqChat } from "@/lib/groq";
 import { getGoogleToken, gmailHeader, GmailMessage } from "@/lib/google";
 import { getBrasiliaTime } from "@/lib/time";
+import { getMyHubContext } from "@/lib/myhub";
+import { buildBriefingRequest } from "@/lib/briefing";
 
 /* ── Calendar: events for today ──────────────────────────────────────────── */
 
@@ -128,33 +130,17 @@ export async function GET(req: NextRequest) {
 
   const token = await getGoogleToken(req);
 
-  const [events, emails, weather] = await Promise.all([
+  const [events, emails, weather, myhub] = await Promise.all([
     token ? getTodayEvents(token) : Promise.resolve("Calendário não conectado."),
     token ? getUnreadEmails(token) : Promise.resolve("Gmail não conectado."),
     getWeather(),
+    getMyHubContext(),
   ]);
 
   const { dateLabel, time, period } = getBrasiliaTime();
 
-  const context = [
-    `Data: ${dateLabel} — ${time}h (${period}, Brasília)`,
-    `Agenda de hoje: ${events}`,
-    `Emails não lidos: ${emails}`,
-    weather ? `Clima: ${weather}` : null,
-  ].filter(Boolean).join("\n");
-
   try {
-    const text = await groqChat(apiKey, {
-      messages: [
-        {
-          role:    "system",
-          content: "Você é o Beto, braço direito e sócio do Rodrigo, que é o seu chefe (chame-o de chefe com naturalidade). Gere um briefing matinal falado, natural e motivador usando APENAS as informações fornecidas abaixo — nunca invente, complete ou assuma nada que não esteja explícito. Tom: casual, direto. Máximo 5 frases. Comece com 'Bom dia, Rodrigo!'. Cubra: data, eventos do dia, emails (citar remetente e assunto exatos) e clima se disponível. Termine com uma frase curta de incentivo.",
-        },
-        { role: "user", content: context },
-      ],
-      temperature: 0.8,
-      max_tokens:  1200,
-    });
+    const text = await groqChat(apiKey, buildBriefingRequest({ dateLabel, time, period, events, emails, weather, myhub }) as never);
 
     const briefing = text || "Não consegui montar o briefing.";
     return NextResponse.json({ briefing });
