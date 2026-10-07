@@ -94,6 +94,9 @@ async function withModels<T>(apiKey: string, call: (groq: Groq, model: string) =
       try {
         return await call(groq, model);
       } catch (e) {
+        // O erro que sobe é só o do último modelo da fila; sem esta linha a causa real (a do primeiro) some dos logs.
+        const err = e as { status?: number; message?: string };
+        console.warn("[beto-groq]", JSON.stringify({ scope, model, status: err?.status ?? null, msg: String(err?.message ?? e).slice(0, 300) }));
         lastError = e;
         if (noteFailure(model, e, scope)) throw e;
       }
