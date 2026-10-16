@@ -42,7 +42,26 @@ listen_secs = 12
 # Falar por cima do Beto o interrompe.
 barge_in = true
 wake_words = ["beto", "ei beto", "oi beto", "olá beto", "ola beto", "hey beto", "acorda beto", "e aí beto"]
-end_phrases = ["valeu", "obrigado", "obrigada", "tchau", "é isso", "só isso", "era isso", "por hoje é isso", "pode parar", "fechou", "beleza"]
+end_phrases = ["valeu", "obrigado", "obrigada", "tchau", "é isso", "só isso", "era isso", "por hoje é isso", "pode parar"]
+# Modo contínuo: depois de chamar o Beto, a conversa segue aberta sem precisar repetir o nome; só fecha por end_phrases ou ociosidade.
+continuous = true
+# Segundos de silêncio total até a conversa contínua fechar sozinha.
+idle_close_secs = 60
+# Pedidos de pausa ("hmm", "peraí"): o Beto espera em vez de responder.
+hold_phrases = ["hmm", "hum", "peraí", "pera", "espera", "deixa eu pensar", "deixa eu ver", "calma"]
+
+[ack]
+# Frases curtas (até 6 palavras) que o Beto fala enquanto busca algo; uma é sorteada conforme o tipo de pedido.
+# Pedido sobre roteiro ou plano de conteúdo.
+conteudo = ["Deixa eu abrir o roteiro.", "Vou pegar o plano."]
+# Pedido sobre agenda e compromissos.
+agenda = ["Deixa eu ver a agenda.", "Só um segundo, olhando a agenda.", "Vou checar a agenda."]
+# Pedido sobre tarefas, hábitos e projetos do My Hub.
+myhub = ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."]
+# Pedido sobre o que o Beto guardou na memória.
+memoria = ["Deixa eu ver o que guardei.", "Um segundo."]
+# Qualquer outra ferramenta.
+geral = ["Um segundo.", "Deixa eu ver.", "Já vejo isso."]
 
 [tts]
 # Voz pelo VoiceStudio no Mac (scripts/voicestudio/ o deixa sempre ligado). Env VOICESTUDIO_URL sobrescreve a url.

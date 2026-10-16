@@ -5,6 +5,7 @@ transport.input() → [rtvi] → stt → gate → user_aggregator → brain_llm 
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from loguru import logger
@@ -13,6 +14,7 @@ from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnal
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -28,10 +30,12 @@ from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
+from .ack import AckPhrases
 from .brain import BetoBrainLLMService, BrainClient
 from .config import Config
 from .gate import ConversationGate
 from .gate_processor import GateProcessor
+from .latency import latency_line
 from .stt import build_stt
 from .tts import VoiceStudioTTSService
 
@@ -51,11 +55,15 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
         end_phrases=cfg.turn.end_phrases,
         follow_up_secs=cfg.turn.follow_up_secs,
         listen_secs=cfg.turn.listen_secs,
+        continuous=cfg.turn.continuous,
+        idle_close_secs=cfg.turn.idle_close_secs,
+        hold_phrases=cfg.turn.hold_phrases,
     )
     stt = build_stt(cfg.stt)
     brain = BrainClient(cfg.brain.url, cfg.brain.token, cfg.brain.history, cfg.brain.timeout_secs)
-    llm = BetoBrainLLMService(brain)
     tts = build_tts(cfg)
+    llm = BetoBrainLLMService(brain, acks=AckPhrases(cfg.ack.phrases()), is_cached=tts.cached)
+    prewarm_tasks: set[asyncio.Task] = set()   # referência forte: o loop só guarda referência fraca de tasks
 
     context = LLMContext()
     user_agg, assistant_agg = LLMContextAggregatorPair(
@@ -80,11 +88,18 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
     )
 
     rtvi = RTVIProcessor()
-    pipeline = Pipeline([transport.input(), stt, GateProcessor(gate), user_agg, llm, tts, transport.output(), assistant_agg])
+    latency_observer = UserBotLatencyObserver()
+
+    @latency_observer.event_handler("on_latency_breakdown")
+    async def on_latency_breakdown(_obs, b):
+        logger.info(latency_line(b.total_secs, b.user_turn_secs, [(m.processor, m.duration_secs) for m in b.ttfb], llm.last_acked))
+
+    pipeline = Pipeline([transport.input(), stt, GateProcessor(gate, pending=lambda: llm.unanswered), user_agg, llm, tts, transport.output(), assistant_agg])
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(enable_metrics=True, audio_in_sample_rate=16000),
         rtvi_processor=rtvi,
+        observers=[latency_observer],
         rtvi_observer_params=RTVIObserverParams(metrics_enabled=False),
         idle_timeout_secs=None,   # a sessão vive enquanto o navegador estiver conectado; silêncio longo é normal
     )
@@ -116,9 +131,20 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
         else:
             logger.warning(f"[bot] mensagem desconhecida do cliente: {kind}")
 
+    async def _prewarm_acks() -> None:
+        phrases = cfg.ack.all()
+        try:
+            ready = await tts.prewarm(phrases)
+            logger.info(f"[bot] acks prontos: {ready}/{len(phrases)}")
+        except Exception as e:   # o aquecimento é só otimização: falha dele não derruba a sessão
+            logger.warning(f"[bot] prewarm dos acks falhou: {e}")
+
     @transport.event_handler("on_client_connected")
     async def on_client_connected(_t, _client):
         logger.info("[bot] navegador conectado")
+        task = asyncio.create_task(_prewarm_acks())
+        prewarm_tasks.add(task)
+        task.add_done_callback(prewarm_tasks.discard)
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(_t, _client):
@@ -128,4 +154,6 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
     try:
         await runner.run()
     finally:
+        for task in prewarm_tasks:
+            task.cancel()
         await brain.aclose()

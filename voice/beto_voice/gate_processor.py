@@ -10,7 +10,14 @@ import time
 from collections.abc import Callable
 
 from loguru import logger
-from pipecat.frames.frames import BotStoppedSpeakingFrame, Frame, InterimTranscriptionFrame, TranscriptionFrame
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    Frame,
+    InterimTranscriptionFrame,
+    TranscriptionFrame,
+    VADUserStartedSpeakingFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIServerMessageFrame
 
@@ -18,10 +25,18 @@ from .gate import ConversationGate
 
 
 class GateProcessor(FrameProcessor):
-    def __init__(self, gate: ConversationGate, *, clock: Callable[[], float] = time.monotonic, **kwargs):
+    def __init__(
+        self,
+        gate: ConversationGate,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        pending: Callable[[], bool] = lambda: False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._gate = gate
         self._clock = clock
+        self._pending = pending   # a pergunta anterior ficou sem resposta? (o cérebro foi interrompido)
 
     @property
     def gate(self) -> ConversationGate:
@@ -32,12 +47,15 @@ class GateProcessor(FrameProcessor):
         now = self._clock()
 
         if isinstance(frame, TranscriptionFrame):
-            d = self._gate.on_transcript(frame.text, now)
+            d = self._gate.on_transcript(frame.text, now, pending=self._pending())
             if d.kind == "forward":
                 frame.text = d.text
                 await self.push_frame(frame, direction)
             elif d.kind == "listen":
                 logger.info("[gate] wake word: ouvindo")
+                await self.push_frame(RTVIServerMessageFrame(data={"type": "state", "state": "listening"}), direction)
+            elif d.kind == "hold":
+                logger.info("[gate] hesitação: segue ouvindo")
                 await self.push_frame(RTVIServerMessageFrame(data={"type": "state", "state": "listening"}), direction)
             elif d.kind == "end":
                 logger.info("[gate] encerrado pelo chefe")
@@ -48,11 +66,16 @@ class GateProcessor(FrameProcessor):
             return
 
         if isinstance(frame, InterimTranscriptionFrame):
-            if self._gate.is_open(now):
+            if self._gate.accepting(now):   # mesma regra da final: vale a fala que começou com o gate aberto
                 await self.push_frame(frame, direction)
             return
 
-        if isinstance(frame, BotStoppedSpeakingFrame):
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._gate.on_bot_started(now)
+        elif isinstance(frame, BotStoppedSpeakingFrame):
             self._gate.on_bot_stopped(now)
+        elif isinstance(frame, VADUserStartedSpeakingFrame):
+            # O agregador (dono do VAD) emite nos dois sentidos; aqui chega subindo. Segue no mesmo sentido.
+            self._gate.on_user_started(now)
 
         await self.push_frame(frame, direction)

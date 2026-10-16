@@ -1,5 +1,11 @@
 import pytest
-from pipecat.frames.frames import BotStoppedSpeakingFrame, InterimTranscriptionFrame, TranscriptionFrame
+from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
+    InterimTranscriptionFrame,
+    TranscriptionFrame,
+    VADUserStartedSpeakingFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frameworks.rtvi import RTVIServerMessageFrame
 
@@ -15,11 +21,9 @@ class Clock:
         return self.t
 
 
-@pytest.fixture
-def proc(monkeypatch):
-    gate = ConversationGate(wake_words=["beto", "ei beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12)
+def _monta(monkeypatch, gate, **kw):
     clock = Clock()
-    p = GateProcessor(gate, clock=clock)
+    p = GateProcessor(gate, clock=clock, **kw)
     pushed = []
 
     async def push(frame, direction=FrameDirection.DOWNSTREAM):
@@ -33,6 +37,21 @@ def proc(monkeypatch):
     p.pushed = pushed
     p.clock = clock
     return p
+
+
+@pytest.fixture
+def proc(monkeypatch):
+    gate = ConversationGate(wake_words=["beto", "ei beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12)
+    return _monta(monkeypatch, gate)
+
+
+@pytest.fixture
+def proc_continuo(monkeypatch):
+    gate = ConversationGate(
+        wake_words=["beto", "ei beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12,
+        continuous=True, idle_close_secs=60, hold_phrases=["hmm"],
+    )
+    return _monta(monkeypatch, gate)
 
 
 def tf(text: str) -> TranscriptionFrame:
@@ -77,5 +96,61 @@ async def test_parcial_so_passa_com_o_gate_aberto(proc):
     await proc.process_frame(interim, FrameDirection.DOWNSTREAM)
     assert interim not in proc.pushed
     proc.gate.on_listen(proc.clock())
+    await proc.process_frame(interim, FrameDirection.DOWNSTREAM)
+    assert interim in proc.pushed
+
+
+async def test_vad_subindo_marca_inicio_da_fala(proc):
+    proc.gate.on_transcript("Beto, oi", now=100); proc.gate.on_bot_stopped(now=101)
+    proc.clock.t = 108
+    vad = VADUserStartedSpeakingFrame()
+    await proc.process_frame(vad, FrameDirection.UPSTREAM)
+    assert vad in proc.pushed   # o frame segue o caminho dele
+    proc.clock.t = 114
+    await proc.process_frame(tf("e amanhã?"), FrameDirection.DOWNSTREAM)
+    assert any(isinstance(f, TranscriptionFrame) and f.text == "e amanhã?" for f in proc.pushed)
+
+
+async def test_hold_manda_estado_listening(proc_continuo):
+    await proc_continuo.process_frame(tf("Beto, oi"), FrameDirection.DOWNSTREAM)
+    proc_continuo.gate.on_bot_stopped(now=proc_continuo.clock.t)
+    proc_continuo.pushed.clear()
+    await proc_continuo.process_frame(tf("hmm"), FrameDirection.DOWNSTREAM)
+    assert [f.data for f in proc_continuo.pushed if isinstance(f, RTVIServerMessageFrame)] == [{"type": "state", "state": "listening"}]
+    assert not [f for f in proc_continuo.pushed if isinstance(f, TranscriptionFrame)]
+
+
+async def test_bot_comecou_a_falar_abre_o_turno_e_segue(proc, monkeypatch):
+    calls, pushed = [], []
+    monkeypatch.setattr(proc.gate, "on_bot_started", lambda now: calls.append(now))
+
+    async def push(frame, direction=FrameDirection.DOWNSTREAM):
+        pushed.append((frame, direction))
+
+    monkeypatch.setattr(proc, "push_frame", push)
+    proc.clock.t = 106
+    frame = BotStartedSpeakingFrame()
+    await proc.process_frame(frame, FrameDirection.UPSTREAM)
+    assert calls == [106]
+    assert pushed == [(frame, FrameDirection.UPSTREAM)]   # segue no mesmo sentido
+
+
+async def test_pergunta_pendente_manda_a_hesitacao_ao_cerebro(monkeypatch):
+    gate = ConversationGate(
+        wake_words=["beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12,
+        continuous=True, idle_close_secs=60, hold_phrases=["hmm"],
+    )
+    p = _monta(monkeypatch, gate, pending=lambda: True)
+    gate.on_listen(p.clock())
+    await p.process_frame(tf("hmm"), FrameDirection.DOWNSTREAM)
+    assert [f.text for f in p.pushed if isinstance(f, TranscriptionFrame)] == ["hmm"]
+
+
+async def test_parcial_passa_se_a_fala_comecou_com_o_gate_aberto(proc):
+    proc.gate.on_transcript("Beto, oi", now=100); proc.gate.on_bot_stopped(now=101)   # janela até 110
+    proc.clock.t = 108
+    await proc.process_frame(VADUserStartedSpeakingFrame(), FrameDirection.UPSTREAM)
+    proc.clock.t = 112
+    interim = InterimTranscriptionFrame("e amanh", "", "2026-10-05T10:00:00Z")
     await proc.process_frame(interim, FrameDirection.DOWNSTREAM)
     assert interim in proc.pushed

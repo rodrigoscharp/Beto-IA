@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -5,6 +6,7 @@ import pytest
 from pipecat.frames.frames import LLMTextFrame, TTSSpeakFrame
 from pipecat.processors.frameworks.rtvi import RTVIServerMessageFrame
 
+from beto_voice.ack import AckPhrases
 from beto_voice.brain import ERROR_TEXT, BetoBrainLLMService, BrainClient, build_messages, parse_line
 
 
@@ -53,6 +55,12 @@ def test_parse_line():
     assert parse_line("") is None
     assert parse_line("lixo") is None
     assert parse_line('{"meta":{"mode":"x"}}') is None
+
+
+def test_parse_line_ack():
+    assert parse_line('{"ack":"agenda"}') == {"ack": "agenda"}
+    assert parse_line('{"ack":""}') is None
+    assert parse_line('{"ack":"outro"}') == {"ack": "outro"}   # tipo novo do servidor: AckPhrases usa "geral"
 
 
 # ── BrainClient.stream ─────────────────────────────────────────────────────
@@ -145,3 +153,96 @@ async def test_erro_http_fala_mensagem_de_erro():
     c = client_with(b"nao autorizado", status=401)
     frames = await collect(BetoBrainLLMService(c), [])
     assert [f.text for f in frames if isinstance(f, TTSSpeakFrame)] == [ERROR_TEXT]
+
+
+@pytest.mark.asyncio
+async def test_respond_mede_tempo_ate_o_primeiro_texto():
+    t = iter([10.0, 12.8])
+    llm = BetoBrainLLMService(client_with(ndjson({"t": "[emo:neutro] Oi."}, {"meta": {"mode": "chat"}})), clock=lambda: next(t))
+    await collect(llm, [{"role": "user", "content": "oi"}])
+    assert llm.last_reply_secs == pytest.approx(2.8)
+    assert llm.last_acked is False
+
+
+@pytest.mark.asyncio
+async def test_ack_em_cache_e_falado_antes_da_resposta_e_fora_do_historico():
+    body = ndjson({"ack": "agenda"}, {"t": "[emo:neutro] Amanhã você tem dentista."}, {"meta": {"mode": "full"}})
+    llm = BetoBrainLLMService(client_with(body), acks=AckPhrases({"agenda": ["Deixa eu ver a agenda."], "geral": ["Um segundo."]}), is_cached=lambda t: True)
+    out = await collect(llm, [{"role": "user", "content": "o que tenho amanhã?"}])
+    speak = [f for f in out if isinstance(f, TTSSpeakFrame)]
+    assert [(f.text, f.append_to_context) for f in speak] == [("Deixa eu ver a agenda.", False)]
+    first_text = next(i for i, f in enumerate(out) if isinstance(f, LLMTextFrame))
+    assert out.index(speak[0]) < first_text
+    emo = [f.data["emotion"] for f in out if isinstance(f, RTVIServerMessageFrame) and f.data.get("type") == "emotion"]
+    assert emo[0] == "pensativo"
+    assert llm.last_acked is True
+
+
+@pytest.mark.asyncio
+async def test_ack_fora_do_cache_fica_mudo():
+    body = ndjson({"ack": "agenda"}, {"t": "Ok."}, {"meta": {"mode": "full"}})
+    llm = BetoBrainLLMService(client_with(body), acks=AckPhrases({"agenda": ["X"], "geral": ["Y"]}), is_cached=lambda t: False)
+    out = await collect(llm, [{"role": "user", "content": "agenda"}])
+    assert not any(isinstance(f, TTSSpeakFrame) for f in out)
+    assert llm.last_acked is False
+
+
+@pytest.mark.asyncio
+async def test_segundo_ack_ou_ack_depois_de_texto_e_ignorado():
+    body = ndjson({"ack": "agenda"}, {"ack": "myhub"}, {"t": "Ok."}, {"ack": "geral"}, {"meta": {"mode": "full"}})
+    llm = BetoBrainLLMService(client_with(body), acks=AckPhrases({"agenda": ["A"], "myhub": ["M"], "geral": ["G"]}), is_cached=lambda t: True)
+    out = await collect(llm, [{"role": "user", "content": "x"}])
+    assert [f.text for f in out if isinstance(f, TTSSpeakFrame)] == ["A"]
+
+
+@pytest.mark.asyncio
+async def test_last_acked_volta_a_false_no_turno_seguinte():
+    acks = AckPhrases({"agenda": ["A"], "geral": ["G"]})
+    llm = BetoBrainLLMService(client_with(ndjson({"ack": "agenda"}, {"t": "Ok."})), acks=acks, is_cached=lambda t: True)
+    await collect(llm, [])
+    assert llm.last_acked is True
+    llm._client = client_with(ndjson({"t": "Oi."}))
+    await collect(llm, [])
+    assert llm.last_acked is False
+
+
+# ── pergunta sem resposta (hesitação durante o loop de ferramentas) ────────
+
+class _ClienteTravado:
+    """Cérebro que manda um ack e fica preso no loop de ferramentas até ser cancelado."""
+
+    history = 20
+
+    def __init__(self):
+        self.started = asyncio.Event()
+
+    async def stream(self, _messages, _undo):
+        yield {"ack": "agenda"}
+        self.started.set()
+        await asyncio.Event().wait()
+
+
+@pytest.mark.asyncio
+async def test_respond_cancelado_antes_do_texto_fica_sem_resposta_e_relanca():
+    c = _ClienteTravado()
+    llm = BetoBrainLLMService(c)
+    assert llm.unanswered is False
+
+    async def emit(_f):
+        pass
+
+    task = asyncio.create_task(llm.respond([{"role": "user", "content": "o que tenho amanhã?"}], emit))
+    await c.started.wait()
+    assert llm.unanswered is False   # ainda respondendo
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert llm.unanswered is True
+
+
+@pytest.mark.asyncio
+async def test_respond_com_texto_fica_respondido():
+    llm = BetoBrainLLMService(client_with(ndjson({"t": "Oi."}, {"meta": {"mode": "chat"}})))
+    llm.unanswered = True   # sobra de um turno anterior cancelado
+    await collect(llm, [])
+    assert llm.unanswered is False

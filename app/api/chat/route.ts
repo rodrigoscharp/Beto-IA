@@ -14,6 +14,7 @@ import { CONTENT_TOOLS, executeContentTool, type ContentCtx } from "@/lib/tools/
 import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 import { planTurn, type ToolSets } from "@/lib/turnplan";
+import { ackKind } from "@/lib/ack";
 import { encodeLine, type WireLine, type WireMeta } from "@/lib/voicewire";
 
 type Memories = { content: string; category: string }[];
@@ -269,6 +270,8 @@ export async function POST(req: NextRequest) {
           };
           try {
             if (plan.sets) {
+              // Antes do loop de ferramentas: o serviço de voz fala uma frase curta enquanto a ferramenta roda.
+              write({ ack: ackKind(plan.sets) });
               const text = await viaTools(plan.sets);
               chars = text.length;
               write({ t: text });
