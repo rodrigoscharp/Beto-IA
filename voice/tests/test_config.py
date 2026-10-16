@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from beto_voice.config import DEFAULT_PATH, DEFAULT_VOICE_ID, load_config
+from beto_voice.config import DEFAULT_PATH, load_config
 
-ENV = {"VOICE_SERVICE_TOKEN": "tok", "ELEVENLABS_API_KEY": "el"}
+ENV = {"VOICE_SERVICE_TOKEN": "tok"}
 
 
 def test_le_o_toml_do_repositorio_com_os_padroes():
@@ -14,15 +14,14 @@ def test_le_o_toml_do_repositorio_com_os_padroes():
     assert "Muno" in cfg.stt.vocabulary
     assert cfg.stt.engine == "mlx"
     assert cfg.brain.token == "tok"
-    assert cfg.tts.api_key == "el"
-    assert cfg.tts.voice_id == DEFAULT_VOICE_ID
+    assert (cfg.tts.url, cfg.tts.voice, cfg.tts.num_step) == ("http://127.0.0.1:3900", "Beto", 8)
     assert cfg.server.port == 7860
 
 
-def test_env_sobrescreve_url_do_cerebro_e_voz():
-    cfg = load_config(env={**ENV, "BRAIN_URL": "https://beto.example/", "ELEVENLABS_VOICE_ID": "v1"})
+def test_env_sobrescreve_url_do_cerebro_e_da_voz():
+    cfg = load_config(env={**ENV, "BRAIN_URL": "https://beto.example/", "VOICESTUDIO_URL": "http://x:9/"})
     assert cfg.brain.url == "https://beto.example"   # sem barra no fim
-    assert cfg.tts.voice_id == "v1"
+    assert cfg.tts.url == "http://x:9"
 
 
 def test_initial_prompt_junta_vocabulario_e_texto_livre():

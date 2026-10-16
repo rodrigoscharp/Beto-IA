@@ -2,18 +2,20 @@
 
 Roda no Mac e substitui a Web Speech API do navegador: Silero VAD + smart-turn v3 decidem quando você terminou de
 falar, o Whisper large-v3-turbo (MLX, GPU) transcreve com o seu vocabulário, o cérebro continua sendo o `/api/chat`
-do app (Vercel ou `npm run dev`) e a voz sai pela ElevenLabs em streaming, interrompível. Design em
-`docs/superpowers/specs/2026-10-05-voz-local-design.md`.
+do app (Vercel ou `npm run dev`) e a voz sai pelo VoiceStudio no próprio Mac (perfil "Beto", a mesma voz do app),
+interrompível. Design em `docs/superpowers/specs/2026-10-05-voz-local-design.md` e
+`docs/superpowers/specs/2026-10-15-voz-voicestudio-design.md`.
 
 ## Rodar
 
 ```bash
 cd voice
-cp .env.example .env            # ELEVENLABS_API_KEY, VOICE_SERVICE_TOKEN (openssl rand -hex 32), BRAIN_URL
+cp .env.example .env            # VOICE_SERVICE_TOKEN (openssl rand -hex 32), BRAIN_URL
 uv sync
 uv run beto-voice               # http://127.0.0.1:7860 — a primeira vez baixa o modelo (~1,6 GB)
 ```
 
+- O VoiceStudio precisa estar no ar em `http://127.0.0.1:3900` com o perfil "Beto" (ver `scripts/voicestudio/` na raiz).
 - `VOICE_SERVICE_TOKEN` tem de ser o mesmo no app (variável na Vercel, ou `.env.local` com `npm run dev`).
 - `BRAIN_URL` aponta para o cérebro: `http://localhost:3000` em desenvolvimento, `https://<app>.vercel.app` em produção.
 - No app, `NEXT_PUBLIC_VOICE_URL` (padrão `http://localhost:7860`) diz onde procurar o serviço. Com ele no ar, o
@@ -24,7 +26,7 @@ Página de desenvolvimento em `http://localhost:7860/` (conectar, ouvir, interro
 ## Parâmetros
 
 Tudo em `beto-voice.toml` (comentado): vocabulário e `initial_prompt` do Whisper, tempos do VAD e do smart-turn,
-janela de follow-up, wake words, frases de encerramento, voz e velocidade da ElevenLabs, CORS. Nada é fixo no código.
+janela de follow-up, wake words, frases de encerramento, endereço, perfil, passos e velocidade do VoiceStudio, CORS. Nada é fixo no código.
 
 ## Como funciona a escuta
 
@@ -39,12 +41,13 @@ janela de follow-up, wake words, frases de encerramento, voz e velocidade da Ele
 ## Testes
 
 ```bash
-uv run pytest          # config, filtro da resposta, gate, cliente do cérebro, STT (sem rede e sem modelo)
+uv run pytest          # config, filtro da resposta, gate, cliente do cérebro, STT, TTS (sem rede e sem modelo)
 ```
 
 ## Limitações
 
 - Só com o Mac ligado e o serviço rodando; no iPhone o app usa a Web Speech.
+- Cada frase leva de 2 a 3 s para ficar pronta no VoiceStudio (ele gera a frase inteira antes de enviar).
 - Chrome recomendado: a página https da Vercel fala com `http://localhost:7860` (o Chrome trata localhost como origem
   segura; o Safari pode recusar).
 - Transcrição parcial é por reprocessamento do buffer (`interim_every_secs`), grosseira; `0` desliga.

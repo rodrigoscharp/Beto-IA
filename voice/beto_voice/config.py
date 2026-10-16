@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "beto-voice.toml"
-DEFAULT_VOICE_ID = "bIHbv24MWmeRgasZH58o"  # Will (leve e jovem), a mesma voz do app
 
 
 @dataclass
@@ -56,13 +55,13 @@ class TurnCfg:
 
 @dataclass
 class TtsCfg:
-    api_key: str
-    voice_id: str = DEFAULT_VOICE_ID
-    model: str = "eleven_turbo_v2_5"
-    stability: float = 0.5
-    similarity_boost: float = 0.8
-    style: float = 0.2
+    """Voz pelo VoiceStudio no Mac: o perfil "Beto" no modo rápido (8 passos), a mesma voz do app."""
+
+    url: str = "http://127.0.0.1:3900"
+    voice: str = "Beto"
+    num_step: int = 8
     speed: float = 1.0
+    timeout_secs: float = 30.0
 
 
 @dataclass
@@ -103,7 +102,7 @@ def _build(cls, data: dict, **overrides):
 def load_config(path: Path | None = None, env: Mapping[str, str] | None = None) -> Config:
     """Lê o TOML (padrão: ``voice/beto-voice.toml``) e aplica a env por cima.
 
-    Env: ``BRAIN_URL`` (url do cérebro), ``VOICE_SERVICE_TOKEN``, ``ELEVENLABS_API_KEY``, ``ELEVENLABS_VOICE_ID``.
+    Env: ``BRAIN_URL`` (url do cérebro), ``VOICE_SERVICE_TOKEN``, ``VOICESTUDIO_URL`` (url do VoiceStudio).
     """
     env = os.environ if env is None else env
     p = path or DEFAULT_PATH
@@ -122,11 +121,9 @@ def load_config(path: Path | None = None, env: Mapping[str, str] | None = None) 
         raise ValueError(f'beto-voice.toml: [stt].engine deve ser "mlx" ou "faster", veio "{stt.engine}"')
 
     turn = _build(TurnCfg, _section(raw, "turn"))
-    tts = _build(
-        TtsCfg,
-        _section(raw, "tts"),
-        api_key=env.get("ELEVENLABS_API_KEY", ""),
-        voice_id=env.get("ELEVENLABS_VOICE_ID") or DEFAULT_VOICE_ID,
-    )
+    tts_raw = dict(_section(raw, "tts"))
+    tts_raw["url"] = env.get("VOICESTUDIO_URL") or tts_raw.get("url", TtsCfg.url)
+    tts = _build(TtsCfg, tts_raw)
+    tts.url = tts.url.rstrip("/")
     server = _build(ServerCfg, _section(raw, "server"))
     return Config(brain=brain, stt=stt, turn=turn, tts=tts, server=server)

@@ -1,5 +1,5 @@
 # Configuração do serviço local de voz do Beto. Tudo que é parâmetro mora aqui; segredos vão no .env.
-# Env sobrescreve: BRAIN_URL, VOICE_SERVICE_TOKEN, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID.
+# Env sobrescreve: BRAIN_URL, VOICE_SERVICE_TOKEN, VOICESTUDIO_URL.
 
 [brain]
 # Onde o cérebro do Beto está (Vercel, ou http://localhost:3000 com `npm run dev`).
@@ -45,10 +45,12 @@ wake_words = ["beto", "ei beto", "oi beto", "olá beto", "ola beto", "hey beto",
 end_phrases = ["valeu", "obrigado", "obrigada", "tchau", "é isso", "só isso", "era isso", "por hoje é isso", "pode parar", "fechou", "beleza"]
 
 [tts]
-model = "eleven_turbo_v2_5"
-stability = 0.5
-similarity_boost = 0.8
-style = 0.2
+# Voz pelo VoiceStudio no Mac (scripts/voicestudio/ o deixa sempre ligado). Env VOICESTUDIO_URL sobrescreve a url.
+url = "http://127.0.0.1:3900"
+# Perfil de voz criado por scripts/voicestudio/setup-profile.sh: a mesma voz do app.
+voice = "Beto"
+# Passos de geração: 8 = modo rápido (2 a 3 s por frase); 16 soa um pouco melhor e leva o dobro.
+num_step = 8
 speed = 1.0
 
 [server]

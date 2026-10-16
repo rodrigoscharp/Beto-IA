@@ -18,7 +18,6 @@ from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair, LLMUserAggregatorParams
 from pipecat.processors.frameworks.rtvi import RTVIObserverParams, RTVIProcessor
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.transcriptions.language import Language
 from pipecat.transports.base_transport import TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
@@ -34,23 +33,11 @@ from .config import Config
 from .gate import ConversationGate
 from .gate_processor import GateProcessor
 from .stt import build_stt
+from .tts import VoiceStudioTTSService
 
 
-def build_tts(cfg: Config) -> ElevenLabsTTSService:
-    t = cfg.tts
-    return ElevenLabsTTSService(
-        api_key=t.api_key,
-        settings=ElevenLabsTTSService.Settings(
-            voice=t.voice_id,
-            model=t.model,
-            language=Language.PT,
-            stability=t.stability,
-            similarity_boost=t.similarity_boost,
-            style=t.style,
-            speed=t.speed,
-            use_speaker_boost=True,
-        ),
-    )
+def build_tts(cfg: Config) -> VoiceStudioTTSService:
+    return VoiceStudioTTSService(cfg.tts)
 
 
 async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
