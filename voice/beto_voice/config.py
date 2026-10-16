@@ -67,7 +67,7 @@ class AckCfg:
         default_factory=lambda: ["Deixa eu ver a agenda.", "Só um segundo, olhando a agenda.", "Vou checar a agenda."]
     )
     myhub: list[str] = field(default_factory=lambda: ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."])
-    memoria: list[str] = field(default_factory=lambda: ["Deixa eu ver o que eu guardei.", "Um segundo."])
+    memoria: list[str] = field(default_factory=lambda: ["Deixa eu ver o que guardei.", "Um segundo."])
     geral: list[str] = field(default_factory=lambda: ["Um segundo.", "Deixa eu ver.", "Já vejo isso."])
 
     def phrases(self) -> dict[str, list[str]]:

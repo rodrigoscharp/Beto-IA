@@ -72,7 +72,7 @@ def test_padroes_novos_do_turno_e_do_ack(tmp_path):
     assert "deixa eu pensar" in cfg.turn.hold_phrases
     assert cfg.ack.phrases()["agenda"][0] == "Deixa eu ver a agenda."
     assert set(cfg.ack.phrases()) == {"conteudo", "agenda", "myhub", "memoria", "geral"}
-    assert all(len(f.split()) <= 7 and "chefe" not in f.lower() for f in cfg.ack.all())
+    assert all(len(f.split()) <= 6 and "chefe" not in f.lower() for f in cfg.ack.all())
 
 
 def test_ack_all_nao_repete_e_mantem_a_ordem(tmp_path):

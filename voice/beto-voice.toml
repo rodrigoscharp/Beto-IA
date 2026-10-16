@@ -59,7 +59,7 @@ agenda = ["Deixa eu ver a agenda.", "Só um segundo, olhando a agenda.", "Vou ch
 # Pedido sobre tarefas, hábitos e projetos do My Hub.
 myhub = ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."]
 # Pedido sobre o que o Beto guardou na memória.
-memoria = ["Deixa eu ver o que eu guardei.", "Um segundo."]
+memoria = ["Deixa eu ver o que guardei.", "Um segundo."]
 # Qualquer outra ferramenta.
 geral = ["Um segundo.", "Deixa eu ver.", "Já vejo isso."]
 
