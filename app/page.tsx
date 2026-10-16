@@ -16,6 +16,10 @@ import type { ServerMsg } from "@/lib/voicelink";
 import { resolveEmailRef, type ListedEmail } from "@/lib/gmail-text";
 import { afterWake, MAX_UTTERANCE_MS, silenceMs } from "@/lib/endpoint";
 import { ACK_ALL, ackPhrase, turnAck, type AckKind } from "@/lib/ack";
+import { SharedPlayer } from "@/lib/audioplayer";
+
+// Um <audio> só para todas as falas, destravado no primeiro clique: o Safari recusa new Audio() fora de um clique.
+const player = new SharedPlayer(() => new Audio());
 
 /* Mascote 3D (three.js): só no cliente, fora do bundle do servidor. */
 const BetoGhost = dynamic(() => import("@/components/mascot/BetoGhost"), { ssr: false });
@@ -199,7 +203,6 @@ export default function JarvisPage() {
   const activeRec      = useRef<SR | null>(null);
   const restartTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deviceId       = useRef<string | null>(null);
-  const audioRef       = useRef<HTMLAudioElement | null>(null);
   const audioUnlocked  = useRef(false);
   const queueRef       = useRef<SpeechQueue | null>(null);                       // fala por frase em andamento
   const typedTurn      = useRef(false);                                           // turno digitado: não reabre o microfone
@@ -348,6 +351,7 @@ export default function JarvisPage() {
     const unlock = () => {
       if (audioUnlocked.current) return;
       audioUnlocked.current = true;
+      player.unlock();
       const synth = window.speechSynthesis;
       if (synth) {
         synth.onvoiceschanged = () => synth.getVoices();
@@ -494,7 +498,7 @@ export default function JarvisPage() {
     speakSeq.current++;   // fala que ainda estava esperando o áudio não toca mais
     queueRef.current?.cancel();
     queueRef.current = null;
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
+    player.stopAll();
   }
   /** Quem chama quer silêncio e abandona também a resposta que ainda estava chegando. */
   function killAudio() {
@@ -513,16 +517,11 @@ export default function JarvisPage() {
         } catch { return null; }
       },
       play: (url, hooks) => {
-        const audio = new Audio(url);
-        audioRef.current = audio;
         let finish: () => void = () => {};
         const done = new Promise<void>((r) => { finish = r; });
-        audio.onplaying = () => { setTalking(true); hooks.onPlaying(); };
-        audio.onended = () => finish();
-        audio.onerror = () => finish();
-        audio.play().catch(() => finish());
+        const playing = player.play(url, { onPlaying: () => { setTalking(true); hooks.onPlaying(); }, onEnd: () => finish() });
         void done.then(() => setTalking(false));   // a boca para entre uma frase e outra
-        return { done, stop: () => { audio.pause(); audio.src = ""; finish(); } };
+        return { done, stop: () => playing.stop() };
       },
       showText:  (t) => { setTalking(false); setCaption(t); },
       readingMs: (t) => Math.min(8000, 1500 + t.length * 55),
@@ -578,28 +577,18 @@ export default function JarvisPage() {
     const url  = cachedAudio.current.get(text);
     if (!url) return Promise.resolve(false);
     stopPlayback();
-    const audio = new Audio(url);
-    audioRef.current = audio;
     setMode("speaking");
     setTalking(false);
     setCaption(text);
     return new Promise<boolean>((resolve) => {
-      let over = false;
-      const end = () => {
-        if (over) return;
-        over = true;
+      const end = (cut: boolean) => {
         clearTimeout(cap);
         setTalking(false);
-        const cut = audioRef.current !== audio;
-        if (!cut) { audioRef.current = null; setCaption(""); setMode("thinking"); }   // volta a "pensando" até a resposta
+        if (!cut) { setCaption(""); setMode("thinking"); }   // volta a "pensando" até a resposta
         resolve(cut);
       };
-      const cap = setTimeout(() => { audio.pause(); }, 6000);   // áudio travado não segura a resposta
-      audio.onplaying = () => { setTalking(true); firstSound(); };
-      audio.onended = end;
-      audio.onerror = end;
-      audio.onpause = end;
-      audio.play().catch(end);
+      const playing = player.play(url, { onPlaying: () => { setTalking(true); firstSound(); }, onEnd: end });
+      const cap = setTimeout(() => playing.stop(), 6000);   // áudio travado não segura a resposta
     });
   }
 
@@ -614,13 +603,8 @@ export default function JarvisPage() {
     setTalking(false);
     setCaption(text);
 
-    const audio = new Audio(url);
-    audioRef.current = audio;
-    const finish = () => { audioRef.current = null; setTalking(false); setCaption(""); onDone(); };
-    audio.onplaying = () => { setTalking(true); firstSound(); };
-    audio.onended = finish;
-    audio.onerror = finish;
-    audio.play().catch(finish);
+    const finish = () => { setTalking(false); setCaption(""); onDone(); };
+    player.play(url, { onPlaying: () => { setTalking(true); firstSound(); }, onEnd: finish });
     return true;
   }
 
@@ -736,14 +720,9 @@ export default function JarvisPage() {
     void voiceBlob(text, true).then(blob => {
       if (seq !== speakSeq.current) return;
       if (!blob) { silent(); return; }
-      const url   = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
-      audio.onplaying = () => { setTalking(true); firstSound(); };
-      audio.onended = cleanup;
-      audio.onerror = cleanup;
-      audio.play().catch(cleanup);
+      const url = URL.createObjectURL(blob);
+      const cleanup = () => { URL.revokeObjectURL(url); done(); };
+      player.play(url, { onPlaying: () => { setTalking(true); firstSound(); }, onEnd: cleanup });
     });
   }
 

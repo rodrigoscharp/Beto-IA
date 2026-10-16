@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { saveSpotifyRefreshToken } from "@/lib/secrets";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -30,6 +31,8 @@ export async function GET(req: NextRequest) {
   }
 
   const data = await tokenRes.json();
+  // O endereço local do Safari não recebe o cookie sp_rt: guarda o refresh token cifrado no servidor.
+  if (data.refresh_token) await saveSpotifyRefreshToken(data.refresh_token);
   const response = NextResponse.redirect(new URL("/?spotify=ok", req.url));
 
   response.cookies.set("sp_at", data.access_token, {

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Modelo do LaunchAgent que mantém o proxy do Beto (https://localhost:3443, para o Safari) sempre ligado.
+     Não instale à mão: scripts/proxy/install.sh preenche os __MARCADORES__ e carrega no launchd. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.beto.proxy</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <!-- Heap pequeno: o proxy só repassa bytes. -->
+    <string>--max-old-space-size=32</string>
+    <string>__DIR__/proxy.mjs</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BETO_UPSTREAM</key>
+    <string>https://betoia.vercel.app</string>
+    <key>BETO_PROXY_PORT</key>
+    <string>3443</string>
+    <!-- O mesmo certificado do mkcert do VoiceStudio (localhost, 127.0.0.1, ::1). -->
+    <key>BETO_PROXY_CERT</key>
+    <string>__CERT__</string>
+    <key>BETO_PROXY_KEY</key>
+    <string>__KEY__</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- Caiu, volta sozinho. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/beto-proxy.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/beto-proxy.log</string>
+</dict>
+</plist>
