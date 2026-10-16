@@ -17,6 +17,13 @@ Três coisas quebram o ritmo da conversa hoje.
    sozinhos encerram a conversa, embora quase sempre sejam só uma confirmação.
 3. **Sem medida.** Ninguém sabe quanto cada etapa custa (STT, cérebro, TTS), então qualquer ajuste de latência é chute.
 
+A voz agora sai do **VoiceStudio local** (`voice/beto_voice/tts.py`), que gera cada frase inteira antes de tocar: de 2
+a 3 s por frase no modo rápido. Duas consequências para este design: uma frase de reconhecimento sintetizada na hora
+chegaria tão tarde quanto a resposta, então o áudio dela tem de estar pronto antes; e o TTS é forte candidato a maior
+gargalo, o que a medida (parte C) tem de confirmar antes de qualquer mudança nele.
+
+**Pré-condição:** a troca para o VoiceStudio está commitada antes de a implementação começar.
+
 ## Fora do escopo
 
 O caminho do navegador sem o serviço local (Web Speech), continuidade entre sessões, funcionalidades novas (pesquisa
@@ -26,11 +33,14 @@ na web, controle do Mac, lembretes, visão de tela). Cada um vira um design pró
 
 ### Protocolo
 
-`lib/voicewire.ts` ganha um tipo de linha:
+`lib/voicewire.ts` ganha um tipo de linha com o **tipo** do reconhecimento, não a frase:
 
 ```
-{"ack": "Deixa eu ver a agenda."}
+{"ack": "agenda"}
 ```
+
+Tipos: `"conteudo"`, `"agenda"`, `"myhub"`, `"memoria"`, `"geral"`. A frase e o áudio ficam no serviço de voz, que é
+quem precisa do áudio pronto. Assim o servidor não duplica a lista de frases.
 
 Regras:
 
@@ -38,15 +48,19 @@ Regras:
   Conversa simples não leva ack: o stream já começa em poucas centenas de milissegundos.
 - No máximo um `ack` por resposta, sempre antes de qualquer `{"t": ...}`. A rede de proteção que refaz a chamada com
   todas as ferramentas não manda um segundo ack.
-- O texto do ack é só fala: sem tag de emoção, sem tag de ação.
+- Tipo desconhecido é tratado pelo serviço de voz como `"geral"`.
 - Cliente que não conhece a linha a ignora (`parseLine` e `parse_line` já devolvem `null` para linha desconhecida).
 
-### Escolha da frase
+### Escolha do tipo (servidor)
 
-Função pura nova, `ackFor(sets: ToolSets, seed: number): string`, em `lib/ack.ts`. Ela escolhe pela ferramenta mais
-específica do turno, nesta ordem: plano de conteúdo, agenda, My Hub, memória, e uma frase genérica quando nenhuma se
-aplica. Cada grupo tem de duas a três variações, todas curtas (até seis palavras) e sem "chefe". A variação sai de
-`seed` (a rota passa `Date.now()`), para não repetir a mesma frase sempre.
+Função pura nova, `ackKind(sets: ToolSets): AckKind`, em `lib/ack.ts`. Ela escolhe pela ferramenta mais específica do
+turno, nesta ordem: plano de conteúdo, agenda, My Hub, memória, e `"geral"` quando nenhuma se aplica.
+
+### Frases e áudio pronto (serviço de voz)
+
+As frases ficam em `beto-voice.toml`, seção nova `[ack]`, uma lista por tipo. Cada tipo tem de duas a três variações,
+todas curtas (até seis palavras) e sem "chefe". A variação é escolhida em rodízio por tipo, para não repetir a mesma
+frase duas vezes seguidas.
 
 Frases iniciais:
 
@@ -60,11 +74,17 @@ Frases iniciais:
 
 ### Serviço de voz
 
-- `parse_line` (Python) reconhece `{"ack": str}` com texto não vazio e devolve `{"ack": texto}`.
+- `VoiceStudioTTSService` ganha um cache de áudio em memória (texto exato da frase para o PCM) e o método
+  `prewarm(texts)`, que sintetiza cada frase uma vez. `run_tts` toca do cache quando o texto está nele, sem chamar o
+  VoiceStudio. O `bot.py` chama `prewarm` com todas as frases de `[ack]` no início da sessão, em segundo plano: a
+  conversa não espera o aquecimento (são cerca de 12 frases, uns 30 s de VoiceStudio).
+- `parse_line` (Python) reconhece `{"ack": str}` com texto não vazio e devolve `{"ack": tipo}`.
 - `BetoBrainLLMService.respond`, ao receber o primeiro `ack` da resposta:
-  - manda ao navegador `{"type": "emotion", "emotion": "pensativo"}`;
-  - emite `TTSSpeakFrame(texto, append_to_context=False)`, para a frase ser falada na hora sem entrar no histórico.
-    Assim o modelo não vê o ack nas respostas anteriores e não aprende a repeti-lo.
+  - se a frase escolhida ainda não está no cache, não fala nada (sintetizar agora atrasaria a resposta de verdade) e
+    registra no log;
+  - se está, manda ao navegador `{"type": "emotion", "emotion": "pensativo"}` e emite
+    `TTSSpeakFrame(frase, append_to_context=False)`, para a frase ser falada na hora sem entrar no histórico. Assim o
+    modelo não vê o ack nas respostas anteriores e não aprende a repeti-lo.
 - Um `ack` depois do primeiro, ou depois de algum `t`, é ignorado com um aviso no log.
 - O texto da resposta que chega depois segue o caminho de hoje (`LLMTextFrame`) e é falado em seguida ao ack, na
   mesma fila do TTS. A emoção da resposta, quando chega, substitui o "pensativo".
@@ -119,31 +139,37 @@ configurável e o tempo ocioso é curto.
 - Como o ack antecipa o primeiro áudio, `BetoBrainLLMService` também escreve `[latency] resposta=2.80s` com o tempo
   do início do pedido ao cérebro até o primeiro texto de verdade (o primeiro `t`), para o loop de ferramentas não
   sumir da medida.
-- Experimento, só no TOML: `[tts] model = "eleven_flash_v2_5"` no lugar de `eleven_turbo_v2_5`. Fica se a voz em
-  português continuar boa no ouvido do Rodrigo e o TTFB do TTS cair. O código não muda.
+- Nenhuma mudança no TTS nesta spec. Se a medida confirmar o VoiceStudio como maior gargalo, as opções (frase
+  inicial curta, `num_step` menor, sintetizar a próxima frase enquanto a atual toca) viram um design próprio, com os
+  números do ensaio na mão.
 
 ## Testes
 
 - `scripts/voicewire.test.mjs` (já existe): `parseLine` lê `ack`, recusa `ack` vazio ou que não seja texto, e
   `encodeLine` faz ida e volta.
-- `scripts/ack.test.mjs`: `ackFor` escolhe o grupo certo para cada combinação de `ToolSets`, respeita a ordem de
-  prioridade, varia com `seed` e nenhuma frase contém "chefe" nem passa de seis palavras.
+- `scripts/ack.test.mjs`: `ackKind` escolhe o tipo certo para cada combinação de `ToolSets` e respeita a ordem de
+  prioridade.
+- `voice/tests/test_tts.py`: `run_tts` com texto em cache não chama o VoiceStudio e entrega o PCM guardado; `prewarm`
+  guarda o PCM de cada frase e não derruba nada se uma delas falhar.
 - A rota não tem teste hoje. A mudança nela é uma linha: a função `viaTools` do modo ndjson chama
-  `write({ ack: ackFor(sets, Date.now()) })` antes de `replyWithTools`. Ela é conferida no ensaio (passo 4 da ordem),
+  `write({ ack: ackKind(sets) })` antes de `replyWithTools`. Ela é conferida no ensaio (passo 4 da ordem),
   olhando o log `[latency]` com `ack=sim` nos turnos com ferramenta e `ack=não` na conversa.
 - `voice/tests/test_brain.py`: `parse_line` com `ack`; `respond` emite emoção "pensativo" e
-  `TTSSpeakFrame(append_to_context=False)` antes dos `LLMTextFrame`; segundo `ack` é ignorado.
+  `TTSSpeakFrame(append_to_context=False)` antes dos `LLMTextFrame` quando a frase está no cache; não emite nada
+  quando não está; segundo `ack` é ignorado; tipo desconhecido usa `"geral"`; frases do mesmo tipo se alternam.
 - `voice/tests/test_gate.py`: fala começada com a janela aberta e transcrita depois do fim da janela é aceita; fala
   começada com a janela fechada continua ignorada; modo contínuo mantém aberto até `idle_close_secs`; desligado volta
   aos 9 s; "beleza" sozinho não encerra; "tchau beto" encerra; "hmm" e "deixa eu pensar" viram `hold` e renovam a
   janela.
 - `voice/tests/test_gate_processor.py`: `VADUserStartedSpeakingFrame` subindo chama `on_user_started`; `hold` manda o
   estado `listening`.
-- `voice/tests/test_config.py`: as chaves novas têm padrão e validação (`idle_close_secs > 0`).
+- `voice/tests/test_config.py`: as chaves novas têm padrão e validação (`idle_close_secs > 0`, `[ack]` com os cinco
+  tipos e pelo menos uma frase em cada).
 
 ## Ordem de implementação
 
 1. Medida de latência (C), para ter o antes.
 2. Ack (A): protocolo, frase, rota, serviço de voz.
 3. Gate (B): início da fala, modo contínuo, encerramento, hesitação.
-4. Ensaio de 10 minutos de conversa real, com a medida antes e depois, e decisão sobre o modelo flash do TTS.
+4. Ensaio de 10 minutos de conversa real, com a medida antes e depois. O resultado diz se o próximo design é sobre o
+   TTS.
