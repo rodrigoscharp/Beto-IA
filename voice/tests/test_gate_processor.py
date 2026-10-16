@@ -1,5 +1,6 @@
 import pytest
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     InterimTranscriptionFrame,
     TranscriptionFrame,
@@ -117,3 +118,18 @@ async def test_hold_manda_estado_listening(proc_continuo):
     await proc_continuo.process_frame(tf("hmm"), FrameDirection.DOWNSTREAM)
     assert [f.data for f in proc_continuo.pushed if isinstance(f, RTVIServerMessageFrame)] == [{"type": "state", "state": "listening"}]
     assert not [f for f in proc_continuo.pushed if isinstance(f, TranscriptionFrame)]
+
+
+async def test_bot_comecou_a_falar_abre_o_turno_e_segue(proc, monkeypatch):
+    calls, pushed = [], []
+    monkeypatch.setattr(proc.gate, "on_bot_started", lambda now: calls.append(now))
+
+    async def push(frame, direction=FrameDirection.DOWNSTREAM):
+        pushed.append((frame, direction))
+
+    monkeypatch.setattr(proc, "push_frame", push)
+    proc.clock.t = 106
+    frame = BotStartedSpeakingFrame()
+    await proc.process_frame(frame, FrameDirection.UPSTREAM)
+    assert calls == [106]
+    assert pushed == [(frame, FrameDirection.UPSTREAM)]   # segue no mesmo sentido

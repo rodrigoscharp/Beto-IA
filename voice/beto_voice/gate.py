@@ -103,6 +103,10 @@ class ConversationGate:
         if self._speech_started_open_at is None and self.is_open(now):
             self._speech_started_open_at = now
 
+    def on_bot_started(self, now: float) -> None:
+        """O Beto começou a falar: o turno é dele até parar. Reabre depois do fim do ack, quando a resposta começa."""
+        self._turn_open = True
+
     def on_bot_stopped(self, now: float) -> None:
         self._turn_open = False
         self._open_until = now + self._window_secs

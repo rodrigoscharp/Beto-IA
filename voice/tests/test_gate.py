@@ -184,3 +184,14 @@ def test_accepting_vale_pela_marca(gate):
     gate.on_user_started(now=108)
     assert gate.accepting(now=112) and not gate.is_open(now=112)
     assert not gate.accepting(now=118.1)
+
+
+# ── ack antes da resposta ──────────────────────────────────────────────────
+
+def test_fim_do_ack_nao_encerra_o_turno_do_beto():
+    g = contínuo(continuous=False)
+    assert g.on_transcript("Beto, o que tenho amanhã?", now=100).kind == "forward"
+    g.on_bot_started(now=101)
+    g.on_bot_stopped(now=102)    # fim do ack
+    g.on_bot_started(now=106)    # a resposta de verdade começa
+    assert g.on_transcript("e depois de amanhã?", now=112).kind == "forward"

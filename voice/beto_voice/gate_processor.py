@@ -11,6 +11,7 @@ from collections.abc import Callable
 
 from loguru import logger
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     Frame,
     InterimTranscriptionFrame,
@@ -61,7 +62,9 @@ class GateProcessor(FrameProcessor):
                 await self.push_frame(frame, direction)
             return
 
-        if isinstance(frame, BotStoppedSpeakingFrame):
+        if isinstance(frame, BotStartedSpeakingFrame):
+            self._gate.on_bot_started(now)
+        elif isinstance(frame, BotStoppedSpeakingFrame):
             self._gate.on_bot_stopped(now)
         elif isinstance(frame, VADUserStartedSpeakingFrame):
             # O agregador (dono do VAD) emite nos dois sentidos; aqui chega subindo. Segue no mesmo sentido.
