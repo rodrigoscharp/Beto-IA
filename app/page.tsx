@@ -6,7 +6,7 @@ import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion, type VoiceSta
 import { claimsWrite, needsTools, wantsCalendarWrite, wantsMemoryForget, wantsMemorySave, wantsMyHubWrite } from "@/lib/intent";
 import { ReplyStream, type StreamEvent } from "@/lib/replystream";
 import { SpeechQueue } from "@/lib/speechqueue";
-import type { QuotaInfo } from "@/lib/ops";
+import { fetchSpeech, voiceStudioOnline } from "@/lib/voicestudio";
 import MiniPlayer from "@/components/MiniPlayer";
 import { useTheme } from "@/components/useTheme";
 import { useProactive } from "@/components/useProactive";
@@ -117,9 +117,8 @@ function firstGreetingToday(): boolean {
     return true;
   } catch { return false; }
 }
-const GREETING_CACHE = "beto-fillers-v4";   // muda junto com a voz do TTS ou com as frases: o nome novo regera as saudações (pouca cota)
-const OLD_GREETING_CACHES = ["beto-fillers-v2", "beto-fillers-v3"];   // caches de vozes antigas, apagados na abertura
-const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começar a tocar a resposta
+const GREETING_CACHE = "beto-fillers-v5";   // muda junto com a voz ou com as frases: o nome novo regera as saudações
+const OLD_GREETING_CACHES = ["beto-fillers-v2", "beto-fillers-v3", "beto-fillers-v4"];   // caches de vozes antigas, apagados na abertura
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
 const FOLLOWUP_GAP   = 250;    // respiro entre o fim da voz dele e abrir o microfone (evita ouvir o próprio eco)
@@ -179,7 +178,9 @@ export default function JarvisPage() {
   const [emotion,      setEmotion]      = useState<Emotion>("neutro");
   const [typing,       setTyping]       = useState(false);   // caixa de texto aberta
   const [typedText,    setTypedText]    = useState("");
-  const [voiceQuota,   setVoiceQuota]   = useState<QuotaInfo | null>(null);
+  const [voiceOnline,  setVoiceOnline]  = useState<boolean | null>(null);
+  const voiceOnlineRef = useRef<boolean | null>(null);
+  voiceOnlineRef.current = voiceOnline;
   const [talking,      setTalking]      = useState(false);   // voz de fato tocando: a boca do rosto só mexe nesse intervalo
   const [caption,      setCaption]      = useState("");
   const [timerDisplay, setTimerDisplay] = useState<{ label: string; timeLeft: number } | null>(null);
@@ -202,7 +203,8 @@ export default function JarvisPage() {
   const typedTurn      = useRef(false);                                           // turno digitado: não reabre o microfone
   const turnT0         = useRef<number | null>(null);                             // início do turno, para medir o tempo até o 1º áudio
   const turnVia        = useRef<"stream" | "full" | "greeting">("full");
-  const quotaAt        = useRef(0);
+  const voiceAt        = useRef(0);
+  const speakSeq       = useRef(0);
   const turnSeq        = useRef(0);                                               // número do turno: respostas de um turno antigo não mexem no atual
   const streamAbort    = useRef<AbortController | null>(null);                    // para de ler (e de gastar) o stream do turno cancelado
   const timerInterval  = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -228,7 +230,7 @@ export default function JarvisPage() {
     onThinking: () => { setMode("thinking"); turnT0.current = performance.now(); turnVia.current = "stream"; },
     onBotSpeaking: (s) => {
       if (s) { setMode("speaking"); setEmotion(pendingEmotion.current); setTalking(true); firstSound(); }
-      else { setTalking(false); setCaption(""); setMode("wake"); refreshQuota(); }
+      else { setTalking(false); setCaption(""); setMode("wake"); refreshVoice(); }
     },
     onBotText: (t) => setCaption(t),
     onServerMessage: (m) => { void handleServerMessage(m); },
@@ -332,8 +334,8 @@ export default function JarvisPage() {
     startWake();
 
     const prefetch = setTimeout(prefetchGreetings, 3000);
-    const quota    = setTimeout(refreshQuota, 5000);
-    return () => { clearTimeout(prefetch); clearTimeout(quota); };
+    const voice    = setTimeout(refreshVoice, 5000);
+    return () => { clearTimeout(prefetch); clearTimeout(voice); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -467,15 +469,11 @@ export default function JarvisPage() {
         const key = `/__filler/${encodeURIComponent(text)}`;   // prefixo antigo mantido: é a chave do cache já gravado nos aparelhos
         let res = await cache.match(key);
         if (!res) {
-          const r = await fetch("/api/tts", {
-            method:  "POST",
-            headers: { "Content-Type": "application/json" },
-            // silêncio na frente: o áudio do aparelho acorda sem comer o início da frase
-            body:    JSON.stringify({ text, lead: true }),
-          });
-          if (!r.ok) continue;
-          await cache.put(key, r.clone());
-          res = r;
+          // silêncio na frente: o áudio do aparelho acorda sem comer o início da frase
+          const blob = await voiceBlob(text, true);
+          if (!blob) continue;
+          res = new Response(blob, { headers: { "Content-Type": "audio/wav" } });
+          await cache.put(key, res.clone());
         }
         cachedAudio.current.set(text, URL.createObjectURL(await res.blob()));
       }
@@ -484,6 +482,7 @@ export default function JarvisPage() {
 
   /** Para qualquer voz em andamento: a fila por frase e o áudio atual. */
   function stopPlayback() {
+    speakSeq.current++;   // fala que ainda estava esperando o áudio não toca mais
     queueRef.current?.cancel();
     queueRef.current = null;
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
@@ -502,7 +501,7 @@ export default function JarvisPage() {
     } else {
       setMode("wake"); setTimeout(startWake, 300);
     }
-    refreshQuota();
+    refreshVoice();
   }
 
   /** Primeiro áudio (ou primeira legenda) de uma resposta: manda o tempo desde o fim da fala do usuário. */
@@ -516,11 +515,20 @@ export default function JarvisPage() {
     } catch { /* métrica é opcional */ }
   }
 
-  /** Quanto da cota de voz resta (só mostra quando está acabando). No máximo 1 consulta por minuto. */
-  function refreshQuota() {
-    if (Date.now() - quotaAt.current < 60_000) return;
-    quotaAt.current = Date.now();
-    fetch("/api/tts/quota").then(r => r.json()).then((q: QuotaInfo) => setVoiceQuota(q)).catch(() => {});
+  /** O VoiceStudio está no ar? (o aviso "sem voz" só aparece quando não está). No máximo 1 consulta por minuto,
+      a não ser logo depois de uma fala que falhou (`force`). */
+  function refreshVoice(force = false) {
+    if (!force && Date.now() - voiceAt.current < 60_000) return;
+    voiceAt.current = Date.now();
+    void voiceStudioOnline().then(setVoiceOnline);
+  }
+
+  /** Áudio de uma frase pelo VoiceStudio, ou null se ele não respondeu (aí o aviso "sem voz" é conferido na hora). */
+  async function voiceBlob(text: string, lead: boolean): Promise<Blob | null> {
+    const blob = await fetchSpeech(text, { lead });
+    if (!blob) refreshVoice(true);
+    else if (voiceOnlineRef.current === false) refreshVoice(true);   // voltou: tira o aviso
+    return blob;
   }
 
   /** Toca uma frase pré-gerada na hora. Devolve false se ainda não está no cache (aí cai no TTS normal). */
@@ -615,7 +623,7 @@ export default function JarvisPage() {
     return `Faltam ${formatTime(timerSecsLeft.current)} para o ${timerLabel.current}.`;
   }
 
-  /* ── TTS: ElevenLabs with MediaSource streaming, synth fallback ──────── */
+  /* ── Voz: VoiceStudio no Mac (lib/voicestudio.ts) ──────────────────────── */
 
   function speak(text: string, onDone: () => void, emotion: Emotion = "neutro") {
     killAudio();
@@ -631,84 +639,24 @@ export default function JarvisPage() {
 
     const done = () => { setTalking(false); setCaption(""); onDone(); };
 
-    // Sem a voz da ElevenLabs (cota acabou, chave recusada) o Beto NÃO troca por outra voz: o texto fica na tela
-    // pelo tempo de ler e a conversa segue. O motivo fica nos logs da rota /api/tts.
+    // Sem o VoiceStudio (desligado, travado) o Beto NÃO troca por outra voz: o texto fica na tela pelo tempo de ler
+    // e a conversa segue. O motivo vai para o console e o aviso "sem voz" aparece no canto.
     const silent = () => { firstSound(); setTimeout(done, Math.min(8000, 1500 + text.length * 55)); };
 
-    fetch("/api/tts", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ text, lead: true }),
-    })
-      .then(res => {
-        if (!res.ok || !res.body) throw new Error("TTS falhou");
-
-        const supportsMS =
-          typeof MediaSource !== "undefined" &&
-          MediaSource.isTypeSupported("audio/mpeg");
-
-        if (supportsMS) {
-          const ms    = new MediaSource();
-          const url   = URL.createObjectURL(ms);
-          const audio = new Audio(url);
-          audioRef.current = audio;
-
-          const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
-          audio.onplaying = () => { setTalking(true); firstSound(); };
-          audio.onended = cleanup;
-          audio.onerror = cleanup;
-
-          ms.addEventListener("sourceopen", async () => {
-            let sb: SourceBuffer;
-            try   { sb = ms.addSourceBuffer("audio/mpeg"); }
-            catch { cleanup(); return; }
-
-            const reader     = res.body!.getReader();
-            const waitUpdate = () =>
-              new Promise<void>(r => sb.addEventListener("updateend", () => r(), { once: true }));
-
-            // Só começa a tocar com um pouco de áudio já bufferizado (ou no fim do stream, se for curto):
-            // começar no primeiro pedacinho fazia o início da fala sair cortado.
-            let started = false;
-            const start = async () => {
-              if (started) return;
-              started = true;
-              audio.play().catch(() => {});
-            };
-            const buffered = () => audio.buffered.length ? audio.buffered.end(audio.buffered.length - 1) - audio.currentTime : 0;
-
-            try {
-              for (;;) {
-                const { done: streamDone, value } = await reader.read();
-                if (streamDone) {
-                  if (sb.updating) await waitUpdate();
-                  if (ms.readyState === "open") ms.endOfStream();
-                  void start();
-                  return;
-                }
-                if (sb.updating) await waitUpdate();
-                sb.appendBuffer(value);
-                if (!started && buffered() >= PREBUFFER_S) void start();
-              }
-            } catch { cleanup(); }
-          });
-
-        } else {
-          res.blob()
-            .then(blob => {
-              const url   = URL.createObjectURL(blob);
-              const audio = new Audio(url);
-              audioRef.current  = audio;
-              const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
-              audio.onplaying = () => { setTalking(true); firstSound(); };
-              audio.onended = cleanup;
-              audio.onerror = cleanup;
-              audio.play().catch(done);
-            })
-            .catch(silent);
-        }
-      })
-      .catch(silent);
+    // A frase leva uns segundos para ficar pronta: se outra fala começou nesse meio-tempo, esta não toca mais.
+    const seq = speakSeq.current;
+    void voiceBlob(text, true).then(blob => {
+      if (seq !== speakSeq.current) return;
+      if (!blob) { silent(); return; }
+      const url   = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      const cleanup = () => { URL.revokeObjectURL(url); audioRef.current = null; done(); };
+      audio.onplaying = () => { setTalking(true); firstSound(); };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
+      audio.play().catch(cleanup);
+    });
   }
 
   /* ── Spotify deep-link + playback polling ────────────────────────────── */
@@ -1152,12 +1100,8 @@ export default function JarvisPage() {
       queue = new SpeechQueue({
         fetchAudio: async (t, first) => {
           try {
-            const r = await fetch("/api/tts", {
-              method:  "POST",
-              headers: { "Content-Type": "application/json" },
-              body:    JSON.stringify(first ? { text: t, lead: true } : { text: t }),
-            });
-            return r.ok ? URL.createObjectURL(await r.blob()) : null;
+            const blob = await voiceBlob(t, first);
+            return blob ? URL.createObjectURL(blob) : null;
           } catch { return null; }
         },
         play: (url, hooks) => {
@@ -1494,18 +1438,18 @@ export default function JarvisPage() {
         </form>
       )}
 
-      {/* Cota da voz — bottom right, só quando está acabando */}
-      {voiceQuota && (voiceQuota.level === "low" || voiceQuota.level === "empty") && (
+      {/* Voz — bottom right, só quando o VoiceStudio não responde */}
+      {voiceOnline === false && (
         <div
           className="beto-chrome"
-          title="Cota mensal da voz (ElevenLabs)"
+          title="VoiceStudio não respondeu em localhost:3900"
           style={{
             position: "fixed", bottom: 18, right: 22, zIndex: 10, pointerEvents: "none",
-            color: voiceQuota.level === "empty" ? "rgba(255,120,110,0.75)" : "rgba(255,200,110,0.65)",
+            color: "rgba(255,120,110,0.75)",
             fontSize: 10, fontFamily: "monospace", letterSpacing: "0.12em", textTransform: "uppercase",
           }}
         >
-          {voiceQuota.level === "empty" ? "voz esgotada" : `voz: ${voiceQuota.remainingPct}%`}
+          sem voz
         </div>
       )}
 

@@ -81,7 +81,7 @@ export function prependSilence(wav: ArrayBuffer, secs: number): ArrayBuffer {
   const out = new ArrayBuffer(12 + 8 + fmtSize + 8 + silence + dataSize);
   const o = new DataView(out);
   const bytes = new Uint8Array(out);
-  const put = (off: number, s: string) => [...s].forEach((c, i) => o.setUint8(off + i, c.charCodeAt(0)));
+  const put = (off: number, s: string) => { for (let i = 0; i < s.length; i++) o.setUint8(off + i, s.charCodeAt(i)); };
   put(0, "RIFF"); o.setUint32(4, out.byteLength - 8, true); put(8, "WAVE");
   put(12, "fmt "); o.setUint32(16, fmtSize, true);
   bytes.set(new Uint8Array(wav, fmtAt, fmtSize), 20);
