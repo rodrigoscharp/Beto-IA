@@ -6,7 +6,8 @@ por ``follow_up_secs``; toque no mascote (ou wake word sozinho) abre por ``liste
 
 Modo contínuo: depois que o Beto responde, a janela fica aberta por ``idle_close_secs`` (e não só ``follow_up_secs``),
 para a conversa fluir sem repetir o wake word. A janela vale pelo INÍCIO da fala: se o chefe começou a falar com o
-gate aberto, a transcrição é aceita mesmo que chegue depois de a janela fechar (o STT demora). Hesitação ("hmm",
+gate aberto, a transcrição é aceita mesmo que chegue depois de a janela fechar (o STT demora), até
+``speech_grace_secs`` depois do início. Hesitação ("hmm",
 "peraí", "deixa eu pensar") não vai ao cérebro nem encerra: devolve ``hold`` e renova a janela.
 
 Puro: relógio entra por parâmetro, sem Pipecat.
@@ -47,12 +48,16 @@ class ConversationGate:
         continuous: bool = False,
         idle_close_secs: float = 60.0,
         hold_phrases: list[str] | None = None,
+        speech_grace_secs: float = 10.0,
     ) -> None:
         self._follow_up = follow_up_secs
         self._listen = listen_secs
         self._continuous = continuous
         self._idle_close = idle_close_secs
-        self._speech_open = False   # a fala atual começou com o gate aberto
+        self._speech_grace = speech_grace_secs
+        # Quando começou, com o gate aberto, a fala que ainda não virou decisão. Um 2º segmento do VAD (pausa curta)
+        # não mexe nela: a fala inteira vale pelo primeiro início.
+        self._speech_started_open_at: float | None = None
         self._open_until = -math.inf
         self._ptt = False
         self._turn_open = False
@@ -78,6 +83,11 @@ class ConversationGate:
     def is_open(self, now: float) -> bool:
         return self._ptt or self._turn_open or now < self._open_until
 
+    def accepting(self, now: float) -> bool:
+        """Aberto pelo relógio agora OU porque a fala atual começou com o gate aberto há pouco."""
+        mark = self._speech_started_open_at
+        return self.is_open(now) or (mark is not None and now - mark <= self._speech_grace)
+
     def on_listen(self, now: float) -> None:
         self._open_until = max(self._open_until, now + self._listen)
 
@@ -90,7 +100,8 @@ class ConversationGate:
 
     def on_user_started(self, now: float) -> None:
         """O VAD ouviu o chefe começar a falar: se o gate está aberto agora, a fala inteira vale."""
-        self._speech_open = self.is_open(now)
+        if self._speech_started_open_at is None and self.is_open(now):
+            self._speech_started_open_at = now
 
     def on_bot_stopped(self, now: float) -> None:
         self._turn_open = False
@@ -99,13 +110,14 @@ class ConversationGate:
     def close(self) -> None:
         self._turn_open = False
         self._open_until = -math.inf
+        self._speech_started_open_at = None
 
     # ── transcrição ────────────────────────────────────────────────────────
 
     def on_transcript(self, text: str, now: float) -> Decision:
-        # Aberto pelo relógio agora OU porque a fala começou com o gate aberto; a marca vale para uma decisão só.
-        open_ = self.is_open(now) or self._speech_open
-        self._speech_open = False
+        # A marca de fala começada aberta vale para uma decisão só.
+        open_ = self.accepting(now)
+        self._speech_started_open_at = None
         t = norm(text)
         if not t:
             return Decision("ignore")

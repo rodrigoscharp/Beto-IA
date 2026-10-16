@@ -139,8 +139,9 @@ def test_barge_in_com_hesitacao_mantem_aberto_no_continuo():
     g = contínuo()
     g.on_transcript("Beto, me explica kafka", now=100)   # turno aberto enquanto ele fala
     assert g.on_transcript("peraí", now=105).kind == "hold"
-    g.on_bot_stopped(now=106)
-    assert g.is_open(now=165)
+    # Sem on_bot_stopped antes da checagem: só a renovação da hesitação segura a janela (o turno aberto não conta).
+    g._turn_open = False
+    assert g.is_open(now=164.9) and not g.is_open(now=165.1)
 
 
 def test_hesitacao_com_gate_fechado_e_ignorada():
@@ -152,3 +153,34 @@ def test_hesitacao_so_vale_com_a_frase_inteira():
     g = contínuo()
     g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
     assert g.on_transcript("hmm, toca Drake", now=102).kind == "forward"
+
+
+# ── marca de fala começada com a janela aberta ─────────────────────────────
+
+def test_segundo_segmento_do_vad_nao_apaga_a_marca(gate):
+    gate.on_transcript("Beto, oi", now=100); gate.on_bot_stopped(now=101)   # janela até 110
+    gate.on_user_started(now=108)
+    gate.on_user_started(now=110.4)                     # pausa curta: 2º segmento com a janela já fechada
+    assert gate.on_transcript("e amanhã", now=110.6) == Decision("forward", "e amanhã")
+    assert gate.on_transcript("de manhã", now=113) == Decision("forward", "de manhã")   # turno aberto pela primeira
+
+
+def test_marca_velha_nao_vale(gate):
+    gate.on_transcript("Beto, oi", now=100); gate.on_bot_stopped(now=101)
+    gate.on_user_started(now=108)
+    assert gate.on_transcript("e amanhã", now=125).kind == "ignore"
+
+
+def test_close_limpa_a_marca(gate):
+    gate.on_transcript("Beto, oi", now=100); gate.on_bot_stopped(now=101)
+    gate.on_user_started(now=108)
+    gate.close()
+    assert gate.on_transcript("e amanhã", now=112).kind == "ignore"
+
+
+def test_accepting_vale_pela_marca(gate):
+    gate.on_transcript("Beto, oi", now=100); gate.on_bot_stopped(now=101)
+    assert not gate.accepting(now=112)
+    gate.on_user_started(now=108)
+    assert gate.accepting(now=112) and not gate.is_open(now=112)
+    assert not gate.accepting(now=118.1)
