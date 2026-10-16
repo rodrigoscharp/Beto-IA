@@ -97,27 +97,53 @@ export function speechTimeoutMs(text: string): number {
   return 15000 + text.length * 40;
 }
 
+/* O VoiceStudio gera uma frase por vez e aceita só uma na fila: com a fila cheia (a frase anterior ainda gerando, ou
+   um pedido abandonado num turno interrompido) ele responde 429, e 503 marcado como "tente de novo" enquanto o modelo
+   carrega. Isso não é falha da voz: espera um pouco e pede de novo, dentro do prazo da frase. A espera é curta e fixa,
+   porque uma frase leva uns 2 s; o Retry-After dele (até 30 s) é pensado para scripts em massa. */
+export const BUSY_RETRY_MS = 700;
+
+const retryable = (res: Response) =>
+  res.status === 429 || (res.status === 503 && res.headers.get("X-OmniVoice-Retryable") === "true");
+
 /** Pede a fala ao VoiceStudio. Devolve o WAV, ou null se ele não respondeu a tempo (o motivo vai para o console). */
 export async function fetchSpeech(
   text: string,
-  opts: { lead?: boolean; fetchImpl?: typeof fetch; cfg?: VoiceStudioCfg; timeoutMs?: number } = {},
+  opts: {
+    lead?: boolean; fetchImpl?: typeof fetch; cfg?: VoiceStudioCfg; timeoutMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
 ): Promise<Blob | null> {
   const cfg = opts.cfg ?? voiceStudioConfig();
   const doFetch = opts.fetchImpl ?? fetch;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  // Travado ou com a fila sempre cheia, o Beto ficaria preso em "falando": desiste no prazo e mostra o texto.
+  const deadline = Date.now() + (opts.timeoutMs ?? speechTimeoutMs(text));
   try {
-    const res = await doFetch(`${cfg.url}/v1/audio/speech`, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(speechBody(text, cfg)),
-      // Travado sem responder, o Beto ficaria preso em "falando": desiste e mostra o texto.
-      signal:  AbortSignal.timeout(opts.timeoutMs ?? speechTimeoutMs(text)),
-    });
-    if (!res.ok) {
-      console.warn(`[voz] VoiceStudio ${res.status}: ${(await res.text()).slice(0, 200)}`);
-      return null;
+    for (;;) {
+      const left = deadline - Date.now();
+      if (left <= 0) {
+        console.warn("[voz] VoiceStudio ocupado até o fim do prazo da frase");
+        return null;
+      }
+      const res = await doFetch(`${cfg.url}/v1/audio/speech`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(speechBody(text, cfg)),
+        signal:  AbortSignal.timeout(left),
+      });
+      if (retryable(res)) {
+        await res.body?.cancel().catch(() => {});
+        await sleep(Math.min(BUSY_RETRY_MS, Math.max(0, deadline - Date.now())));
+        continue;
+      }
+      if (!res.ok) {
+        console.warn(`[voz] VoiceStudio ${res.status}: ${(await res.text()).slice(0, 200)}`);
+        return null;
+      }
+      const wav = await res.arrayBuffer();
+      return new Blob([opts.lead ? prependSilence(wav, LEAD_SECS) : wav], { type: "audio/wav" });
     }
-    const wav = await res.arrayBuffer();
-    return new Blob([opts.lead ? prependSilence(wav, LEAD_SECS) : wav], { type: "audio/wav" });
   } catch (error: unknown) {
     console.warn(`[voz] VoiceStudio inacessível em ${cfg.url}: ${error instanceof Error ? error.message : "erro desconhecido"}`);
     return null;
