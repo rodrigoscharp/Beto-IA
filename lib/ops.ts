@@ -50,7 +50,7 @@ export function validMetric(body: unknown): { evt: "ttfa"; ms: number; via: (typ
 }
 
 /** Áreas da bateria de avaliação (evals/cases.json). A rota de relatório só aceita estes nomes. */
-export const EVAL_AREAS = ["agenda", "myhub", "memoria", "spotify", "timer", "email", "github", "briefing", "conversa", "confirmacao"] as const;
+export const EVAL_AREAS = ["agenda", "myhub", "memoria", "spotify", "timer", "email", "github", "briefing", "conversa", "confirmacao", "estilo"] as const;
 
 export type EvalArea = (typeof EVAL_AREAS)[number];
 export interface EvalReport { status: "queda" | "nao_rodou"; total: number | null; baseline: number | null; piorArea: EvalArea | null }

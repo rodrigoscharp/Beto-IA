@@ -115,3 +115,41 @@ test("número: espaço, array e objeto não viram número", () => {
   for (const v of [" ", [35], [], {}, "  \n"]) assert.equal(matchCase(caso, R({ toolCalls: [call("x", { v })] })).ok, false, JSON.stringify(v));
   assert.equal(matchCase({ espera: { ferramenta: "x", args: { v: 35 } } }, R({ toolCalls: [call("x", { v: [35] })] })).ok, false);
 });
+
+test("texto: limite de palavras ignora as tags e conta só o que é falado", () => {
+  const caso = { espera: { nenhumaFerramenta: true, texto: { maxPalavras: 5 } } };
+  assert.equal(matchCase(caso, R({ text: "[emo:neutro] Roda o npm install." })).ok, true);
+  const m = matchCase(caso, R({ text: "[emo:neutro] Roda o npm install e depois o build." }));
+  assert.equal(m.ok, false);
+  assert.match(m.motivo, /8 palavras.*máximo 5/);
+});
+
+test("texto: naoContem e contem por regex, sem olhar a tag de emoção", () => {
+  const caso = { espera: { nenhumaFerramenta: true, texto: { naoContem: ["/^boa pergunta/i", "/chefe/i"], contem: ["/sono/i"] } } };
+  assert.equal(matchCase(caso, R({ text: "[emo:pensativo] O sono tá curto essa semana." })).ok, true);
+  const proibido = matchCase(caso, R({ text: "[emo:alegre] Boa pergunta! O sono importa." }));
+  assert.equal(proibido.ok, false);
+  assert.match(proibido.motivo, /não devia ter/);
+  const faltou = matchCase(caso, R({ text: "[emo:neutro] Descansa mais." }));
+  assert.equal(faltou.ok, false);
+  assert.match(faltou.motivo, /faltou/);
+});
+
+test("texto: continua reprovando ferramenta e resposta vazia", () => {
+  const caso = { espera: { nenhumaFerramenta: true, texto: { maxPalavras: 50 } } };
+  assert.equal(matchCase(caso, R({ text: "ok", toolCalls: [call("x", {})] })).ok, false);
+  assert.equal(matchCase(caso, R({ text: "[emo:neutro]" })).ok, false);
+});
+
+test("validateCases: texto só com nenhumaFerramenta, com campos e regex válidos", () => {
+  const base = { area: "estilo", conversa: [{ role: "user", content: "x" }] };
+  assert.deepEqual(validateCases([{ ...base, id: "ok", espera: { nenhumaFerramenta: true, texto: { maxPalavras: 20, naoContem: ["/x/i"] } } }], []), []);
+  const erros = validateCases([
+    { ...base, id: "a", espera: { needTools: true, texto: { maxPalavras: 20 } } },
+    { ...base, id: "b", espera: { nenhumaFerramenta: true, texto: { maxPalavras: 0 } } },
+    { ...base, id: "c", espera: { nenhumaFerramenta: true, texto: { naoContem: ["/(/"] } } },
+    { ...base, id: "d", espera: { nenhumaFerramenta: true, texto: { outro: 1 } } },
+    { ...base, id: "e", espera: { nenhumaFerramenta: true, texto: { contem: ["sem barras"] } } },
+  ], []);
+  for (const id of ["a", "b", "c", "d", "e"]) assert.ok(erros.some((e) => e.startsWith(id + ":")), `faltou erro de ${id}: ${erros}`);
+});

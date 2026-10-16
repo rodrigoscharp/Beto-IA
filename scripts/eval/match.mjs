@@ -37,6 +37,21 @@ function describe(r) {
   return `texto "${short(r.text.trim(), 80)}"`;
 }
 
+/** O que seria falado: sem tag de emoção nem tag de ação. */
+const spoken = (text) => text.replace(/\[[A-Za-z_]+:[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
+const TEXTO_KEYS = ["maxPalavras", "naoContem", "contem"];
+
+/* Estilo da fala: tamanho e o que não pode (ou tem de) aparecer. Só vale junto com nenhumaFerramenta. */
+function matchTexto(t, fala) {
+  const palavras = fala.split(" ").filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  if (t.maxPalavras !== undefined && palavras > t.maxPalavras) return { ok: false, motivo: `${palavras} palavras, máximo ${t.maxPalavras}: "${short(fala, 80)}"` };
+  const proibido = (t.naoContem ?? []).find((re) => parseRegex(re).test(fala));
+  if (proibido) return { ok: false, motivo: `não devia ter ${proibido}: "${short(fala, 80)}"` };
+  const faltou = (t.contem ?? []).find((re) => !parseRegex(re).test(fala));
+  if (faltou) return { ok: false, motivo: `faltou ${faltou}: "${short(fala, 80)}"` };
+  return { ok: true, motivo: "" };
+}
+
 export function matchCase(caso, r) {
   const proibida = r.toolCalls.find((c) => (caso.nunca ?? []).includes(c.name));
   if (proibida) return { ok: false, motivo: `chamou ${proibida.name}, que é proibida neste caso` };
@@ -50,8 +65,8 @@ export function matchCase(caso, r) {
     return { ok: true, motivo: "" };
   }
   if (e.nenhumaFerramenta) {
-    if (r.toolCalls.length || r.needTools || !r.text.trim()) return { ok: false, motivo: `esperava só texto, veio ${describe(r)}` };
-    return { ok: true, motivo: "" };
+    if (r.toolCalls.length || r.needTools || !spoken(r.text)) return { ok: false, motivo: `esperava só texto, veio ${describe(r)}` };
+    return e.texto ? matchTexto(e.texto, spoken(r.text)) : { ok: true, motivo: "" };
   }
   if (e.needTools) return r.needTools ? { ok: true, motivo: "" } : { ok: false, motivo: `esperava [NEEDTOOLS], veio ${describe(r)}` };
   if (e.tag) {
@@ -117,6 +132,15 @@ export function validateCases(cases, toolNames) {
     if (kinds.length !== 1) err(`espera precisa de exatamente um de ${KINDS.join(", ")}`);
     if (e.ferramenta !== undefined && !toolNames.includes(e.ferramenta)) err(`ferramenta inexistente ${e.ferramenta}`);
     for (const n of c?.nunca ?? []) if (!toolNames.includes(n)) err(`ferramenta inexistente em nunca: ${n}`);
+    if (e.texto !== undefined) {
+      const t = e.texto;
+      if (!e.nenhumaFerramenta) err("texto só vale junto com nenhumaFerramenta");
+      if (!t || typeof t !== "object" || !Object.keys(t).length || Object.keys(t).some((k) => !TEXTO_KEYS.includes(k))) err(`texto aceita só ${TEXTO_KEYS.join(", ")}`);
+      else {
+        if (t.maxPalavras !== undefined && !(Number.isInteger(t.maxPalavras) && t.maxPalavras >= 1)) err("maxPalavras deve ser inteiro >= 1");
+        for (const re of [...(t.naoContem ?? []), ...(t.contem ?? [])]) { try { if (!parseRegex(re)) err(`texto precisa de regex /…/, veio ${re}`); } catch { err(`regex inválida ${re}`); } }
+      }
+    }
     const regexes = [e.conteudo, ...Object.values(e.args ?? {})].filter((v) => typeof v === "string" && v.startsWith("/"));
     for (const r of regexes) { try { if (!parseRegex(r)) err(`regex mal formada ${r}`); } catch { err(`regex inválida ${r}`); } }
     if (c?.repete !== undefined && !(Number.isInteger(c.repete) && c.repete >= 1 && c.repete <= 3)) err("repete deve ser 1, 2 ou 3");
