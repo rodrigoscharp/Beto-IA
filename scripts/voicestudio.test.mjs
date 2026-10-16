@@ -107,7 +107,7 @@ test("fetchSpeech: VoiceStudio travado não prende o Beto (desiste no tempo limi
 });
 
 test("tempo limite cresce com o tamanho do texto", () => {
-  assert.equal(speechTimeoutMs("a".repeat(100)), 15000 + 100 * 40);
+  assert.equal(speechTimeoutMs("a".repeat(100)), 30000 + 100 * 80);
   assert.ok(speechTimeoutMs("a".repeat(4096)) > speechTimeoutMs("oi"));
 });
 
