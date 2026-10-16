@@ -24,6 +24,7 @@ export interface BetoGhostProps {
   onClick: () => void;
 }
 
+const FRAME_MS = 1000 / 30 - 1;   // teto de 30 quadros por segundo (o -1 absorve a variação do relógio)
 const FOV    = 30;
 const VIEW   = 0.38;    // lado (m) do quadro que precisa caber: corpo + props (nuvem, Zzz, notas, vapor)
 const CY     = 0.14;    // centro vertical desse quadro
@@ -117,8 +118,11 @@ export default function BetoGhost({
     onMq();
     mq.addEventListener("change", onMq);
 
+    // 30 quadros por segundo bastam para as animações do mascote. Na taxa do monitor (até 165 Hz), com sombra e
+    // antialias, ele ocupava a GPU que o VoiceStudio usa para gerar a voz, e as frases demoravam a ponto de sumir.
     let last = performance.now();
     const loop = (now: number) => {
+      if (now - last < FRAME_MS) return;
       ghost.update((now - last) / 1000, now);
       last = now;
       renderer.render(scene, camera);

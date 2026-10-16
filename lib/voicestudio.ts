@@ -91,10 +91,11 @@ export function prependSilence(wav: ArrayBuffer, secs: number): ArrayBuffer {
   return out;
 }
 
-/** Quanto esperar pela fala antes de desistir: folga para o modelo carregar (cerca de 9 s depois de reiniciar)
-    mais um tanto por caractere, porque a frase inteira é gerada antes de chegar. */
+/** Quanto esperar pela fala antes de desistir: folga para o motor religar e para o Mac ocupado (o mascote 3D e
+    outras abas dividem a GPU com o VoiceStudio), mais um tanto por caractere, porque a frase inteira é gerada antes
+    de chegar. Frase que chega atrasada ainda é melhor que frase muda. */
 export function speechTimeoutMs(text: string): number {
-  return 15000 + text.length * 40;
+  return 30000 + text.length * 80;
 }
 
 /* O VoiceStudio gera uma frase por vez e aceita só uma na fila: com a fila cheia (a frase anterior ainda gerando, ou

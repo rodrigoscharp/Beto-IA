@@ -466,10 +466,12 @@ export default function JarvisPage() {
     try {
       await Promise.all(OLD_GREETING_CACHES.map(name => caches.delete(name)));
       const cache = await caches.open(GREETING_CACHE);
+      let generated = false;
       for (const text of GREETING_PHRASES) {
         const key = `/__filler/${encodeURIComponent(text)}`;   // prefixo antigo mantido: é a chave do cache já gravado nos aparelhos
         let res = await cache.match(key);
         if (!res) {
+          generated = true;
           // silêncio na frente: o áudio do aparelho acorda sem comer o início da frase
           const blob = await voiceBlob(text, true);
           if (!blob) continue;
@@ -478,6 +480,9 @@ export default function JarvisPage() {
         }
         cachedAudio.current.set(text, URL.createObjectURL(await res.blob()));
       }
+      // Saudações já estavam no cache: nenhum pedido acordou o VoiceStudio. Ele desliga o motor de voz quando fica
+      // parado, e religar leva mais de um minuto; um pedido curto agora deixa a primeira resposta de verdade rápida.
+      if (!generated) void fetchSpeech("Pronto.", { timeoutMs: 120_000 });
     } catch { /* sem cache: o Beto responde pelo caminho normal */ }
   }
 
