@@ -81,3 +81,74 @@ def test_texto_vazio_e_ignorado(gate):
 
 def test_palavra_que_contem_beto_nao_acorda(gate):
     assert gate.on_transcript("o betoneira quebrou", now=100).kind == "ignore"
+
+
+# ── modo contínuo, início da fala e hesitação ──────────────────────────────
+
+def contínuo(**kw):
+    return ConversationGate(wake_words=["beto"], end_phrases=["tchau", "valeu"], follow_up_secs=9, listen_secs=12,
+                            continuous=kw.get("continuous", True), idle_close_secs=60, hold_phrases=["hmm", "peraí", "deixa eu pensar"])
+
+
+def test_fala_comecada_na_janela_e_aceita_mesmo_transcrita_depois(gate):
+    gate.on_transcript("Beto, oi", now=100); gate.on_bot_stopped(now=101)
+    gate.on_user_started(now=108)                       # janela aberta até 110
+    assert gate.on_transcript("e amanhã?", now=114) == Decision("forward", "e amanhã?")
+
+
+def test_fala_comecada_com_a_janela_fechada_continua_ignorada(gate):
+    gate.on_transcript("Beto, oi", now=100); gate.on_bot_stopped(now=101)
+    gate.on_user_started(now=111)
+    assert gate.on_transcript("e amanhã?", now=114).kind == "ignore"
+
+
+def test_modo_continuo_fica_aberto_ate_o_tempo_ocioso():
+    g = contínuo()
+    g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
+    assert g.is_open(now=160) and not g.is_open(now=162)
+
+
+def test_desligado_volta_aos_9s():
+    g = contínuo(continuous=False)
+    g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
+    assert g.is_open(now=109) and not g.is_open(now=111)
+
+
+def test_hesitacao_nao_vai_ao_cerebro_e_renova_a_janela():
+    g = contínuo()
+    g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
+    assert g.on_transcript("Hmm...", now=150).kind == "hold"
+    assert g.on_transcript("Deixa eu pensar, Beto", now=155).kind == "hold"
+    assert g.is_open(now=214)
+
+
+def test_beto_perai_com_gate_fechado_so_abre_a_escuta():
+    g = contínuo()
+    assert g.on_transcript("Beto, peraí", now=100).kind == "listen"
+
+
+def test_fala_na_janela_que_termina_em_tchau_encerra():
+    g = contínuo()
+    g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
+    g.on_user_started(now=150)
+    assert g.on_transcript("tchau Beto", now=152).kind == "end"
+    assert not g.is_open(now=153)
+
+
+def test_barge_in_com_hesitacao_mantem_aberto_no_continuo():
+    g = contínuo()
+    g.on_transcript("Beto, me explica kafka", now=100)   # turno aberto enquanto ele fala
+    assert g.on_transcript("peraí", now=105).kind == "hold"
+    g.on_bot_stopped(now=106)
+    assert g.is_open(now=165)
+
+
+def test_hesitacao_com_gate_fechado_e_ignorada():
+    g = contínuo()
+    assert g.on_transcript("hmm", now=100).kind == "ignore"
+
+
+def test_hesitacao_so_vale_com_a_frase_inteira():
+    g = contínuo()
+    g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
+    assert g.on_transcript("hmm, toca Drake", now=102).kind == "forward"

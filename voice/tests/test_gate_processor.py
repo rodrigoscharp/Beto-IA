@@ -1,5 +1,10 @@
 import pytest
-from pipecat.frames.frames import BotStoppedSpeakingFrame, InterimTranscriptionFrame, TranscriptionFrame
+from pipecat.frames.frames import (
+    BotStoppedSpeakingFrame,
+    InterimTranscriptionFrame,
+    TranscriptionFrame,
+    VADUserStartedSpeakingFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frameworks.rtvi import RTVIServerMessageFrame
 
@@ -15,9 +20,7 @@ class Clock:
         return self.t
 
 
-@pytest.fixture
-def proc(monkeypatch):
-    gate = ConversationGate(wake_words=["beto", "ei beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12)
+def _monta(monkeypatch, gate):
     clock = Clock()
     p = GateProcessor(gate, clock=clock)
     pushed = []
@@ -33,6 +36,21 @@ def proc(monkeypatch):
     p.pushed = pushed
     p.clock = clock
     return p
+
+
+@pytest.fixture
+def proc(monkeypatch):
+    gate = ConversationGate(wake_words=["beto", "ei beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12)
+    return _monta(monkeypatch, gate)
+
+
+@pytest.fixture
+def proc_continuo(monkeypatch):
+    gate = ConversationGate(
+        wake_words=["beto", "ei beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12,
+        continuous=True, idle_close_secs=60, hold_phrases=["hmm"],
+    )
+    return _monta(monkeypatch, gate)
 
 
 def tf(text: str) -> TranscriptionFrame:
@@ -79,3 +97,23 @@ async def test_parcial_so_passa_com_o_gate_aberto(proc):
     proc.gate.on_listen(proc.clock())
     await proc.process_frame(interim, FrameDirection.DOWNSTREAM)
     assert interim in proc.pushed
+
+
+async def test_vad_subindo_marca_inicio_da_fala(proc):
+    proc.gate.on_transcript("Beto, oi", now=100); proc.gate.on_bot_stopped(now=101)
+    proc.clock.t = 108
+    vad = VADUserStartedSpeakingFrame()
+    await proc.process_frame(vad, FrameDirection.UPSTREAM)
+    assert vad in proc.pushed   # o frame segue o caminho dele
+    proc.clock.t = 114
+    await proc.process_frame(tf("e amanhã?"), FrameDirection.DOWNSTREAM)
+    assert any(isinstance(f, TranscriptionFrame) and f.text == "e amanhã?" for f in proc.pushed)
+
+
+async def test_hold_manda_estado_listening(proc_continuo):
+    await proc_continuo.process_frame(tf("Beto, oi"), FrameDirection.DOWNSTREAM)
+    proc_continuo.gate.on_bot_stopped(now=proc_continuo.clock.t)
+    proc_continuo.pushed.clear()
+    await proc_continuo.process_frame(tf("hmm"), FrameDirection.DOWNSTREAM)
+    assert [f.data for f in proc_continuo.pushed if isinstance(f, RTVIServerMessageFrame)] == [{"type": "state", "state": "listening"}]
+    assert not [f for f in proc_continuo.pushed if isinstance(f, TranscriptionFrame)]

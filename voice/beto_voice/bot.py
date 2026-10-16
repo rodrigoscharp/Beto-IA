@@ -55,6 +55,9 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
         end_phrases=cfg.turn.end_phrases,
         follow_up_secs=cfg.turn.follow_up_secs,
         listen_secs=cfg.turn.listen_secs,
+        continuous=cfg.turn.continuous,
+        idle_close_secs=cfg.turn.idle_close_secs,
+        hold_phrases=cfg.turn.hold_phrases,
     )
     stt = build_stt(cfg.stt)
     brain = BrainClient(cfg.brain.url, cfg.brain.token, cfg.brain.history, cfg.brain.timeout_secs)

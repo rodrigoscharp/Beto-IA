@@ -10,7 +10,13 @@ import time
 from collections.abc import Callable
 
 from loguru import logger
-from pipecat.frames.frames import BotStoppedSpeakingFrame, Frame, InterimTranscriptionFrame, TranscriptionFrame
+from pipecat.frames.frames import (
+    BotStoppedSpeakingFrame,
+    Frame,
+    InterimTranscriptionFrame,
+    TranscriptionFrame,
+    VADUserStartedSpeakingFrame,
+)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi import RTVIServerMessageFrame
 
@@ -39,6 +45,9 @@ class GateProcessor(FrameProcessor):
             elif d.kind == "listen":
                 logger.info("[gate] wake word: ouvindo")
                 await self.push_frame(RTVIServerMessageFrame(data={"type": "state", "state": "listening"}), direction)
+            elif d.kind == "hold":
+                logger.info("[gate] hesitação: segue ouvindo")
+                await self.push_frame(RTVIServerMessageFrame(data={"type": "state", "state": "listening"}), direction)
             elif d.kind == "end":
                 logger.info("[gate] encerrado pelo chefe")
                 await self.push_frame(RTVIServerMessageFrame(data={"type": "state", "state": "wake"}), direction)
@@ -54,5 +63,8 @@ class GateProcessor(FrameProcessor):
 
         if isinstance(frame, BotStoppedSpeakingFrame):
             self._gate.on_bot_stopped(now)
+        elif isinstance(frame, VADUserStartedSpeakingFrame):
+            # O agregador (dono do VAD) emite nos dois sentidos; aqui chega subindo. Segue no mesmo sentido.
+            self._gate.on_user_started(now)
 
         await self.push_frame(frame, direction)
