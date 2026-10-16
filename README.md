@@ -215,7 +215,7 @@ Cada push para `main` faz deploy automático.
 ## PWA, senha e escuta em segundo plano
 
 - **Senha única:** todas as páginas e `/api/*` exigem login (`middleware.ts`). O hash SHA-256 da senha fica em `lib/auth.ts`; a sessão é um cookie assinado (HMAC) de 30 dias. Opcional: defina `AUTH_SECRET` na Vercel para assinar com outra chave (trocar invalida as sessões). Para trocar a senha: `node -e "console.log(require('crypto').createHash('sha256').update('NOVA_SENHA').digest('hex'))"` e cole em `PASSWORD_SHA256`.
-- **Instalar no Dock (Safari):** abra a URL da Vercel → Arquivo → **Adicionar ao Dock**. No Chrome/Edge: ícone de instalar na barra de endereço.
+- **Instalar no Dock (Safari):** abra `https://localhost:3443` (o proxy local, ver "Safari e app do Dock") → Arquivo → **Adicionar ao Dock**. Pela URL da Vercel o app abre, mas fica sem voz. No Chrome/Edge: ícone de instalar na barra de endereço.
 - **Escuta contínua:** o app mantém a tela ativa (Wake Lock), reinicia o reconhecimento de voz ao voltar o foco e tem watchdog a cada 5s. Deixe a janela aberta (pode ficar atrás de outros apps; minimizar pode pausar o navegador). No Mac, ligue **Ajustes → Teclado → Ditado** e libere o microfone para o app.
 - **Ícones:** fonte em `scripts/assets/beto-3d.png` (render do próprio mascote 3D, fundo transparente); `npm run icons` compõe no fundo preto e regenera os PNGs e o favicon.
 - **Vercel:** `SPOTIFY_REDIRECT_URI` e `GOOGLE_REDIRECT_URI` devem apontar para o domínio de produção (e estar cadastradas nos dashboards do Spotify/Google).
@@ -234,6 +234,21 @@ scripts/voicestudio/setup-profile.sh  # cria o perfil de voz "Beto"
 
 Logs em `~/Library/Logs/voicestudio.log`. Na primeira fala pela página da Vercel, o Chrome pode pedir permissão para
 acessar a rede local: aceite.
+
+### Safari e app do Dock
+
+O Safari bloqueia qualquer pedido de um site público para o `localhost`, então pela URL da Vercel o Beto fica mudo.
+Um proxy local serve o mesmo app em `https://localhost:3443` (repassa tudo para a Vercel), e daí a voz é
+`localhost` para `localhost`:
+
+```bash
+scripts/proxy/install.sh   # LaunchAgent que mantém o proxy sempre ligado (depois do scripts/voicestudio/install.sh)
+```
+
+Abra `https://localhost:3443` no Safari e logue (o login é separado do da Vercel). Agenda e Spotify usam o token
+guardado no servidor: conecte os dois uma vez pelo Chrome, na URL da Vercel (o login do Google e do Spotify volta
+para a Vercel, não para o endereço local). Se a fala não tocar, Safari → Ajustes para Este Site → Reprodução
+Automática → Permitir Toda. Logs em `~/Library/Logs/beto-proxy.log`.
 
 ## Voz local (serviço no Mac)
 
