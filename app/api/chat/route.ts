@@ -264,6 +264,7 @@ export async function POST(req: NextRequest) {
           const write = (l: WireLine) => { try { controller.enqueue(encoder.encode(encodeLine(l))); } catch { /* cliente foi embora */ } };
           let meta: WireMeta = { mode };
           let chars = 0, steps = 1, retried = false, tools: string[] = [];
+          let webModel: string | null | undefined;   // turno de pesquisa: o modelo de busca que respondeu (null = falhou)
           const viaTools = async (sets: ToolSets) => {
             const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
             meta = {
@@ -281,6 +282,7 @@ export async function POST(req: NextRequest) {
               write({ ack: "web" });
               const r = await webAnswer(apiKey, webSystem(), messages);
               meta = { mode: "full" };
+              webModel = r.model;
               tools = [r.ok ? "browser_search" : "browser_search:erro"];
               chars = r.text.length;
               write({ t: r.text });
@@ -317,7 +319,7 @@ export async function POST(req: NextRequest) {
             write({ t: "Desculpe, houve um erro na comunicação." });
           } finally {
             write({ meta });
-            logMetric({ mode: meta.mode, stream: "ndjson", model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars, retried, steps, tools });
+            logMetric({ mode: meta.mode, stream: "ndjson", model: webModel !== undefined ? webModel : workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars, retried, steps, tools });
             try { controller.close(); } catch { /* já fechado */ }
           }
         },
@@ -330,7 +332,7 @@ export async function POST(req: NextRequest) {
     if (stream === true && plan.web) {
       // Pesquisa na web: a resposta inteira vai num corpo de texto só (sem stream do modelo).
       const r = await webAnswer(apiKey, webSystem(), messages);
-      logMetric({ mode: "full", stream: true, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: r.text.length, retried: false, tools: [r.ok ? "browser_search" : "browser_search:erro"] });
+      logMetric({ mode: "full", stream: true, model: r.model, ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: r.text.length, retried: false, tools: [r.ok ? "browser_search" : "browser_search:erro"] });
       return new NextResponse(r.text, {
         headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "x-beto-mode": "full" },
       });
@@ -381,6 +383,7 @@ export async function POST(req: NextRequest) {
     let acted = false;      // alguma ferramenta de ESCRITA executou com sucesso (agenda ou My Hub)
     let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
+    let webModel: string | null | undefined;   // turno de pesquisa: o modelo de busca que respondeu (null = falhou)
     const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured(), content: myHubConfigured() };
     const viaTools = async (sets: ToolSets) => {
       const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
@@ -398,6 +401,7 @@ export async function POST(req: NextRequest) {
       const r = await webAnswer(apiKey, webSystem(), messages);
       reply = r.text;
       usedMode = "full";
+      webModel = r.model;
       tools = [r.ok ? "browser_search" : "browser_search:erro"];
     } else if (plan.sets) {
       reply = await viaTools(plan.sets);
@@ -415,7 +419,7 @@ export async function POST(req: NextRequest) {
         reply = await viaTools(everything);
       }
     }
-    logMetric({ mode: usedMode, stream: false, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
+    logMetric({ mode: usedMode, stream: false, model: webModel !== undefined ? webModel : workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
     return NextResponse.json({
       reply,
       ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}),

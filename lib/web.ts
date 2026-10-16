@@ -10,11 +10,12 @@ export const WEB_FAIL_TEXT = "[emo:triste] Não consegui pesquisar agora. Tenta 
 export interface WebResult { text: string; model: string | null; ok: boolean }
 export type CallFn = (apiKey: string, model: string, params: unknown, timeoutMs: number) => Promise<{ content: string }>;
 
-/* O modelo devolve marcadores de citação (【3†L1-L2】) e às vezes URLs; nada disso pode ir para a voz.
-   A tag [emo:X] fica intacta. */
+/* O modelo devolve marcadores de citação (【3†L1-L2】) e às vezes URLs; nada disso pode ir para a voz. Um marcador
+   cortado no fim (max_tokens) também sai. A tag [emo:X] fica intacta. */
 export function cleanCitations(text: string): string {
   return text
     .replace(/【[^】]*】/g, "")
+    .replace(/【[^】]*$/, "")
     .replace(/https?:\/\/\S+/g, "")
     .replace(/[ \t]{2,}/g, " ")
     .replace(/ +([,.;:!?])/g, "$1")

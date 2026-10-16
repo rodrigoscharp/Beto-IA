@@ -86,3 +86,8 @@ test("o segundo modelo recebe só o que resta do prazo quando é menos que 30 s"
   }, clock, timeouts), () => clock.t);
   assert.deepEqual(timeouts, [[WEB_MODELS[0], 30_000], [WEB_MODELS[1], 20_000]]);
 });
+
+test("cleanCitations tira o marcador cortado no fim da resposta", () => {
+  assert.equal(cleanCitations("[emo:neutro] O dólar fechou a cinco e dez【2†L6"), "[emo:neutro] O dólar fechou a cinco e dez");
+  assert.equal(cleanCitations("Fechou em alta【"), "Fechou em alta");
+});
