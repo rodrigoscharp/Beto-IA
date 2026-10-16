@@ -31,14 +31,14 @@
 
   <key>EnvironmentVariables</key>
   <dict>
-    <!-- Origens que podem pedir voz pelo navegador: as padrão do VoiceStudio + o Beto (Vercel e npm run dev). -->
+    <!-- Origens que podem pedir voz pelo navegador: as padrão do VoiceStudio + o Beto (Vercel, proxy do Safari e npm run dev). -->
     <!-- O motor de voz desliga depois de ficar parado este tanto de segundos (padrão do VoiceStudio: 300). Religar leva
          mais que o prazo de uma frase, e as primeiras falas depois de 5 min parado sumiam. 1 h: fica pronto enquanto
          o Beto está em uso e ainda libera a memória quando ninguém usa. -->
     <key>OMNIVOICE_SIDECAR_IDLE_TIMEOUT_S</key>
     <string>3600</string>
     <key>OMNIVOICE_ALLOWED_ORIGINS</key>
-    <string>https://localhost:3900,https://127.0.0.1:3900,http://localhost:3900,http://127.0.0.1:3900,https://betoia.vercel.app,http://localhost:3000</string>
+    <string>https://localhost:3900,https://127.0.0.1:3900,http://localhost:3900,http://127.0.0.1:3900,https://betoia.vercel.app,https://localhost:3443,http://localhost:3000</string>
     <key>PATH</key>
     <string>__HOME__/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
