@@ -90,9 +90,11 @@ Safari / app do Dock
 
 ## Riscos
 
-- **Autoplay do Safari.** A fala toca com `audio.play()` depois de um `fetch`, fora de um clique. Se o Safari recusar,
-  o Beto mostra o texto. Saída: Safari > Ajustes para Este Site > Reprodução Automática > Permitir Toda. Confirmar na
-  verificação.
+- **Autoplay do Safari (confirmado no primeiro teste).** A fala toca com `audio.play()` segundos depois do pedido,
+  fora de um clique, e o Safari recusa um `new Audio()` assim: os pedidos chegavam ao VoiceStudio com 200 e nada
+  tocava. Correção (`lib/audioplayer.ts`): um elemento de áudio só, destravado no primeiro clique ou tecla da página
+  (toca 10 ms de silêncio) e reaproveitado em todas as frases. Sem nenhum clique desde que a página abriu, a fala
+  continua muda; aí vale Safari > Ajustes para Este Site > Reprodução Automática > Permitir Toda.
 - **Service worker** (`/sw.js`) passa a valer também na origem local; é só cache da casca, sem efeito na voz.
 
 ## Verificação
