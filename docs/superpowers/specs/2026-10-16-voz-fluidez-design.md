@@ -69,7 +69,7 @@ Frases iniciais:
 | conteúdo | "Deixa eu abrir o roteiro." / "Vou pegar o plano." |
 | agenda | "Deixa eu ver a agenda." / "Só um segundo, olhando a agenda." / "Vou checar a agenda." |
 | My Hub | "Deixa eu ver no My Hub." / "Um instante, abrindo o My Hub." |
-| memória | "Deixa eu ver o que eu guardei." / "Um segundo." |
+| memória | "Deixa eu ver o que guardei." / "Um segundo." |
 | genérica | "Um segundo." / "Deixa eu ver." / "Já vejo isso." |
 
 ### Serviço de voz
