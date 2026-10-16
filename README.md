@@ -26,7 +26,7 @@ Assistente pessoal de voz e texto, sci-fi, com simpatia e sotaque, rodando no se
 
 Um assistente pessoal que você hospeda. Sem assinaturas, sem dados de terceiros, sem rastreamento. Você conecta suas próprias contas (Spotify, Google, GitHub) e o Beto passa a controlar tudo por voz.
 
-A interface é o Beto em pessoa: um mascote 3D, o Fantasminha, que reage ao que está acontecendo — dorme esperando o nome dele, fica atento ouvindo, pensa de óculos e prancheta, fala com a emoção da resposta, acena nas saudações, avisa notificações e vira DJ quando o Spotify toca. A voz usa [ElevenLabs](https://elevenlabs.io) para síntese realista e [Groq](https://groq.com) para inferência rápida do LLM.
+A interface é o Beto em pessoa: um mascote 3D, o Fantasminha, que reage ao que está acontecendo — dorme esperando o nome dele, fica atento ouvindo, pensa de óculos e prancheta, fala com a emoção da resposta, acena nas saudações, avisa notificações e vira DJ quando o Spotify toca. A voz vem do [VoiceStudio](https://github.com/debpalash/VoiceStudio) rodando no próprio Mac, sem cota, e o [Groq](https://groq.com) cuida da inferência rápida do LLM.
 
 ---
 
@@ -36,7 +36,7 @@ A interface é o Beto em pessoa: um mascote 3D, o Fantasminha, que reage ao que 
 - Ativação por palavra-chave: "Beto", "Ei Beto", "Olá Beto"
 - Personalidade de brother e empresário parceiro — direto no trabalho, leve na resenha, e sabe quando cada tom cabe
 - Reconhecimento em português via Web Speech API (Chrome/Edge)
-- Síntese de voz com ElevenLabs (voz Will, leve e jovem, combinando com o mascote) — fallback para Speech Synthesis nativa
+- Síntese de voz local com o VoiceStudio (OmniVoice, perfil "Beto": jovem, tom médio) — sem voz reserva: se ele cair, o texto fica na tela e aparece o aviso "sem voz"
 - Histórico de contexto das últimas 20 mensagens por sessão
 
 **Integrações**
@@ -63,7 +63,7 @@ A interface é o Beto em pessoa: um mascote 3D, o Fantasminha, que reage ao que 
 | Linguagem | TypeScript 5 |
 | Estilo | Tailwind CSS 3 |
 | LLM | Groq — `llama-3.1-8b-instant` |
-| TTS | ElevenLabs (`eleven_turbo_v2_5`) |
+| TTS | VoiceStudio local (k2-fsa/OmniVoice, 8 passos) |
 | Voz (input) | Web Speech API (nativa) |
 | Memória | Supabase (PostgreSQL) |
 | Deploy | Vercel |
@@ -83,7 +83,7 @@ msedge-tts
 
 - **Node.js 18+**
 - Conta no [Groq](https://console.groq.com) — gratuita, sem cartão
-- Conta no [ElevenLabs](https://elevenlabs.io) — plano gratuito tem 3 vozes
+- Mac com Apple Silicon e o [VoiceStudio](https://github.com/debpalash/VoiceStudio) instalado em `~/Dev/VoiceStudio` (ver "Voz do Beto" abaixo)
 - Conta no [Supabase](https://supabase.com) — gratuita
 - (Opcional) Conta Spotify Premium para controle de playback
 - (Opcional) Projeto no Google Cloud para Calendar e Gmail
@@ -177,8 +177,9 @@ Copie `.env.local.example` para `.env.local` e preencha:
 | Variável | Descrição | Obrigatória |
 |----------|-----------|:-----------:|
 | `GROQ_API_KEY` | Chave da API do Groq (LLM) | ✅ |
-| `ELEVENLABS_API_KEY` | Chave da API do ElevenLabs (TTS) | ✅ |
-| `ELEVENLABS_VOICE_ID` | ID da voz no ElevenLabs (padrão: `bIHbv24MWmeRgasZH58o`, Will) | — |
+| `NEXT_PUBLIC_VOICESTUDIO_URL` | Onde o navegador pede a voz (padrão: `http://localhost:3900`) | — |
+| `NEXT_PUBLIC_VOICESTUDIO_VOICE` | Perfil de voz no VoiceStudio (padrão: `Beto`) | — |
+| `NEXT_PUBLIC_VOICESTUDIO_STEPS` | Passos de geração: 8 rápido, 16 melhor e mais lento (padrão: `8`) | — |
 | `SUPABASE_URL` | URL do seu projeto Supabase | ✅ |
 | `SUPABASE_ANON_KEY` | Chave pública do Supabase | ✅ |
 | `SPOTIFY_CLIENT_ID` | Client ID do app Spotify | ⬜ |
@@ -219,11 +220,26 @@ Cada push para `main` faz deploy automático.
 - **Ícones:** fonte em `scripts/assets/beto-3d.png` (render do próprio mascote 3D, fundo transparente); `npm run icons` compõe no fundo preto e regenera os PNGs e o favicon.
 - **Vercel:** `SPOTIFY_REDIRECT_URI` e `GOOGLE_REDIRECT_URI` devem apontar para o domínio de produção (e estar cadastradas nos dashboards do Spotify/Google).
 
+## Voz do Beto (VoiceStudio no Mac)
+
+A voz sai do [VoiceStudio](https://github.com/debpalash/VoiceStudio), que roda no Mac em `http://localhost:3900`. Quem
+pede cada frase é o navegador (a Vercel não alcança o localhost do Mac). Para instalar:
+
+```bash
+git clone https://github.com/debpalash/VoiceStudio.git ~/Dev/VoiceStudio
+cd ~/Dev/VoiceStudio && bun install && bun run setup:api   # depois baixe o modelo k2-fsa/OmniVoice pelo app ou pela API
+scripts/voicestudio/install.sh        # no repositório do Beto: LaunchAgent que mantém o VoiceStudio sempre ligado
+scripts/voicestudio/setup-profile.sh  # cria o perfil de voz "Beto"
+```
+
+Logs em `~/Library/Logs/voicestudio.log`. Na primeira fala pela página da Vercel, o Chrome pode pedir permissão para
+acessar a rede local: aceite.
+
 ## Voz local (serviço no Mac)
 
 A Web Speech API corta frases nas pausas e erra nomes próprios. O serviço em `voice/` (Python, Pipecat) troca isso
 por Silero VAD + smart-turn v3 (fim de fala semântico), Whisper large-v3-turbo local via MLX com o seu vocabulário
-(`voice/beto-voice.toml`), ElevenLabs em streaming e barge-in (falar por cima interrompe). O cérebro continua sendo o
+(`voice/beto-voice.toml`), a voz do VoiceStudio e barge-in (falar por cima interrompe). O cérebro continua sendo o
 `/api/chat`, chamado com o token `VOICE_SERVICE_TOKEN`.
 
 ```bash
@@ -263,7 +279,7 @@ O frontend faz o parse dessa tag e chama a API correspondente. Nenhuma palavra-c
 Edite o system prompt em `app/api/chat/route.ts`. É onde o Beto recebe sua identidade — nome, tom, idioma, instruções de comportamento.
 
 **Mudar a voz:**  
-No ElevenLabs, escolha qualquer voz disponível no seu plano e atualize `ELEVENLABS_VOICE_ID`. A variável `ELEVENLABS_API_KEY` já cuida da autenticação.
+A voz é o perfil "Beto" do VoiceStudio, clonado de `voice/assets/beto-ref.wav`. Troque esse arquivo (e o texto dele em `scripts/voicestudio/setup-profile.sh`) e rode o script de novo.
 
 **Mudar o modelo LLM:**  
 Em `app/api/chat/route.ts`, altere o campo `model`. O Groq suporta vários modelos — veja em [console.groq.com/docs/models](https://console.groq.com/docs/models).
@@ -292,7 +308,6 @@ jarvis/
 │   │   ├── memory/            # CRUD de memórias no Supabase
 │   │   ├── music/             # Busca de músicas
 │   │   ├── spotify/           # Spotify (OAuth + playback + now-playing)
-│   │   └── tts/               # Síntese de voz (ElevenLabs)
 │   ├── globals.css
 │   ├── layout.tsx
 │   └── page.tsx               # Interface principal e lógica de voz
@@ -316,8 +331,7 @@ jarvis/
 - **TypeScript estrito** — interfaces tipadas para todos os estados, ações e respostas de API
 - **Cleanup de recursos** — AbortController e event listeners removidos no unmount do componente
 - **Cache em memória** — memórias do Supabase são cacheadas por 5 minutos para reduzir queries
-- **Fallback de TTS** — se ElevenLabs falhar, usa Speech Synthesis nativa do navegador
-- **MediaSource streaming** — áudio do ElevenLabs é reproduzido com baixa latência via streaming, sem esperar o arquivo completo
+- **Voz local sem cota** — o navegador pede cada frase ao VoiceStudio no Mac; a fila prepara a próxima frase enquanto a atual toca
 - **Debounce de fala** — 1.2s de debounce no reconhecimento para evitar submissões parciais
 - **Sem secrets no cliente** — todas as chaves de API ficam exclusivamente nas rotas de servidor
 - **OAuth com cookies HttpOnly** — tokens de refresh do Spotify e Google trafegam apenas em cookies seguros
@@ -328,7 +342,8 @@ jarvis/
 
 - **Web Speech API**: funciona bem no Chrome e Edge. Firefox e Safari têm suporte parcial ou ausente
 - **Spotify**: requer conta **Premium** para controle de playback via API
-- **ElevenLabs plano gratuito**: só as vozes prontas da ElevenLabs (Will, Liam, Charlie...) e limite mensal de caracteres
+- **Voz só no Mac**: o VoiceStudio roda em `localhost:3900`; em outro aparelho o Beto fica sem voz (texto na tela). Cada frase leva de 2 a 3 s para ficar pronta
+- **Pesos do OmniVoice**: licença não comercial (CC-BY-NC)
 - **OAuth Google**: em modo de teste, a tela de consentimento exibe aviso; publique o app no Google para remover
 
 ---

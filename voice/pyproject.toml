@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
-    "pipecat-ai[elevenlabs,local-smart-turn,mlx-whisper,runner,silero,webrtc,whisper]>=1.12.0",
+    "pipecat-ai[local-smart-turn,mlx-whisper,runner,silero,webrtc,whisper]>=1.12.0",
     "python-dotenv>=1.2.4",
 ]
 

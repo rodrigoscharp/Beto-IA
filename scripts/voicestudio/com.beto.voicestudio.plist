@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Modelo do LaunchAgent que mantém o VoiceStudio (a voz do Beto) sempre ligado.
+     Não instale à mão: scripts/voicestudio/install.sh preenche os __MARCADORES__ e carrega no launchd.
+     Roda o uvicorn direto (o `bun run dev:api` recarrega a cada mudança de arquivo, o que não serve aqui). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.beto.voicestudio</string>
+
+  <key>WorkingDirectory</key>
+  <string>__VOICESTUDIO_DIR__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__VOICESTUDIO_DIR__/.venv/bin/python</string>
+    <string>-m</string>
+    <string>uvicorn</string>
+    <string>main:app</string>
+    <string>--app-dir</string>
+    <string>backend</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>3900</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Origens que podem pedir voz pelo navegador: as padrão do VoiceStudio + o Beto (Vercel e npm run dev). -->
+    <key>OMNIVOICE_ALLOWED_ORIGINS</key>
+    <string>http://localhost:3900,http://127.0.0.1:3900,https://beto-ia.vercel.app,http://localhost:3000</string>
+    <key>PATH</key>
+    <string>__HOME__/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <!-- Caiu, volta sozinho. -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/voicestudio.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/voicestudio.log</string>
+</dict>
+</plist>

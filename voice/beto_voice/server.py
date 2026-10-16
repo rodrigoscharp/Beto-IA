@@ -21,6 +21,7 @@ from pipecat.transports.smallwebrtc.request_handler import SmallWebRTCPatchReque
 
 from .bot import run_bot
 from .config import Config, load_config
+from .tts import voicestudio_online
 
 ROOT = Path(__file__).resolve().parent.parent
 DEV_PAGE = ROOT / "dev" / "index.html"
@@ -73,7 +74,7 @@ def create_app(cfg: Config) -> FastAPI:
             "stt": {"engine": cfg.stt.engine, "model": cfg.stt.model if cfg.stt.engine == "mlx" else cfg.stt.faster_model},
             "brain": cfg.brain.url,
             "token": bool(cfg.brain.token),
-            "tts": bool(cfg.tts.api_key),
+            "tts": cfg.tts.url,
         })
 
     @app.get("/")
@@ -90,8 +91,8 @@ def main() -> None:
     cfg = load_config()
     logger.remove()
     logger.add(sys.stderr, level="INFO")
-    if not cfg.tts.api_key:
-        logger.warning("[voz] ELEVENLABS_API_KEY vazio: o Beto não vai falar")
+    if not voicestudio_online(cfg.tts.url):
+        logger.warning(f"[voz] VoiceStudio não respondeu em {cfg.tts.url}: o Beto não vai falar")
     if not cfg.brain.token:
         logger.warning("[voz] VOICE_SERVICE_TOKEN vazio: /api/chat vai recusar")
     logger.info(f"[voz] cérebro em {cfg.brain.url}; escutando em http://{cfg.server.host}:{cfg.server.port}")
