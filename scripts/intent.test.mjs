@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite, wantsMemorySave, wantsMemoryForget, wantsMemoryList, wantsMemory, wantsMemoryTopic, memoryGroundText } from "../lib/intent.ts";
+import { wantsWeb, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite, wantsMemorySave, wantsMemoryForget, wantsMemoryList, wantsMemory, wantsMemoryTopic, memoryGroundText } from "../lib/intent.ts";
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -496,4 +496,27 @@ test("perguntas sobre o que fazer hoje buscam os dados reais (nunca modo convers
     "quais são os planos pra hoje",
     "o que falta fazer hoje",
   ]) assert.equal(needsTools([u(t)]), true, t);
+});
+
+test("wantsWeb: pedido explícito e coisa atual disparam", () => {
+  for (const t of [
+    "pesquisa como está o trânsito na marginal", "procura na internet o horário do jogo", "busca no google o que é o Pipecat",
+    "quais as notícias de hoje", "o que aconteceu hoje no mercado de IA", "o que saiu sobre o Next 16",
+    "qual a cotação do euro", "quanto tá o dólar agora", "quanto fechou o ibovespa", "preço do bitcoin hoje",
+    "qual foi o placar do jogo do Santos", "quem ganhou o jogo ontem", "como tá a tabela do brasileirão",
+    "qual a última versão do Next.js", "já lançou o iPhone novo", "já saiu o novo Zelda",
+    "previsão do tempo pra amanhã", "vai chover em Ubatuba amanhã",
+  ]) assert.equal(wantsWeb([u(t)]), true, t);
+});
+
+test("wantsWeb: opinião, conta, agenda, GitHub e memória não disparam", () => {
+  for (const t of [
+    "quanto custa fazer um mvp", "gastei 10 dólares no uber", "qual a minha agenda de hoje",
+    "o que aconteceu com o meu deploy", "lembra que eu prefiro reunião à tarde", "saiu o deploy?",
+    "o que você acha do dólar alto pra quem exporta", "pesquisa",
+  ]) assert.equal(wantsWeb([u(t)]), false, t);
+});
+
+test("wantsWeb: só a última fala do chefe conta", () => {
+  assert.equal(wantsWeb([u("quanto tá o dólar"), a("[emo:neutro] Cinco e dez."), u("valeu, e o que você acha disso?")]), false);
 });

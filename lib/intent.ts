@@ -317,3 +317,23 @@ export function wantsContent(messages: ChatMsg[]): boolean {
 export function wantsMemory(messages: ChatMsg[]): boolean {
   return wantsMemorySave(messages) || wantsMemoryForget(messages) || wantsMemoryList(messages);
 }
+
+/* ── Pesquisa na web ─────────────────────────────────────────────────────── */
+
+/* Pedido explícito de pesquisa, ou coisa que muda com o tempo (notícia, cotação, placar, versão, tempo). Conservadora:
+   "quanto custa fazer um mvp" (opinião), "o que aconteceu com o meu deploy" (GitHub) e "saiu o deploy?" não entram. */
+const WEB_EXPLICIT = /\b(?:pesquisa|pesquise|pesquisar)\b|\b(?:procura|busca|ve|olha) na (?:internet|web)\b|\bbusca no google\b|\bda um google\b/;
+const WEB_NEWS = /\b(?:noticias?|manchetes?)\b|\bo que aconteceu (?:hoje|ontem|essa semana) (?:no|na|com)\b|\bo que saiu sobre\b|\balguma novidade sobre\b/;
+const WEB_MARKET = /\bcotacao\b|\bquanto (?:ta|esta|ficou|fechou) o (?:dolar|euro|bitcoin|ibovespa|real)\b|\bpreco (?:do|da) (?:bitcoin|acao|acoes|gasolina)\b|\bbolsa hoje\b/;
+const WEB_SPORT = /\bplacar\b|\bquanto (?:foi|ficou|ta|esta) o jogo\b|\bresultado do jogo\b|\bquem ganhou o jogo\b|\btabela do brasileirao\b|\bclassificacao do\b/;
+const WEB_VERSION = /\bultima versao (?:do|da|de)\b|\bversao mais recente\b|\bja lancou\b|\bquando lanca\b|\bja saiu (?:o|a) (?:novo|nova)\b/;
+const WEB_WEATHER = /\bprevisao do tempo\b|\bvai chover\b|\btemperatura (?:hoje|amanha|agora) em\b/;
+
+/** A última fala do chefe pede pesquisa na web (explícita ou sobre algo atual). Na dúvida, falso. */
+export function wantsWeb(messages: ChatMsg[]): boolean {
+  const last = lastUserText(messages);
+  if (!last || /^\s*\[SISTEMA\]/i.test(messages[last.index].content)) return false;
+  if (words(last.text) < 2) return false;
+  const t = last.text;
+  return WEB_EXPLICIT.test(t) || WEB_NEWS.test(t) || WEB_MARKET.test(t) || WEB_SPORT.test(t) || WEB_VERSION.test(t) || WEB_WEATHER.test(t);
+}
