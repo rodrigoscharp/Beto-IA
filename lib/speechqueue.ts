@@ -1,9 +1,10 @@
 /* Fila de fala por frase: cada frase pede o áudio e toca em ordem, enquanto as seguintes já estão sendo buscadas.
    As dependências (buscar áudio, tocar, legenda, relógio) entram de fora: a lógica é testável sem navegador.
 
-   - no máximo 2 pedidos de voz ao mesmo tempo (a ElevenLabs gratuita limita concorrência);
+   - no máximo 2 pedidos de voz ao mesmo tempo: o VoiceStudio gera uma frase por vez, então basta preparar a próxima
+     enquanto a atual toca;
    - só a primeira frase pede o silêncio de abertura (`lead`);
-   - frase sem áudio (cota acabou, erro): o texto fica na tela pelo tempo de ler e a fila segue. Nunca troca de voz. */
+   - frase sem áudio (VoiceStudio fora do ar, erro): o texto fica na tela pelo tempo de ler e a fila segue. Nunca troca de voz. */
 
 export interface QueueDeps {
   /** Devolve o endereço do áudio, ou null se a voz falhou. `first`: é a primeira frase da resposta. */
