@@ -66,7 +66,7 @@ class GateProcessor(FrameProcessor):
             return
 
         if isinstance(frame, InterimTranscriptionFrame):
-            if self._gate.is_open(now):
+            if self._gate.accepting(now):   # mesma regra da final: vale a fala que começou com o gate aberto
                 await self.push_frame(frame, direction)
             return
 

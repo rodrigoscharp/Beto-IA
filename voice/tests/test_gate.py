@@ -218,3 +218,16 @@ def test_hesitacao_sem_pergunta_pendente_segue_hold():
 
 def test_encerramento_vale_mesmo_com_pergunta_pendente():
     assert _aberto().on_transcript("tchau", now=110, pending=True).kind == "end"
+
+
+
+def test_hesitacao_casa_variacoes_do_whisper():
+    g = _aberto()
+    for t in ("Hm.", "Hmmm...", "hum", "Huumm", "Ahn", "ahnn", "hmm, Beto"):
+        assert g.on_transcript(t, now=110).kind == "hold", t
+    assert g.on_transcript("humano", now=110).kind == "forward"
+
+
+def test_sem_frases_de_hesitacao_nao_ha_hold(gate):
+    gate.on_listen(now=100)
+    assert gate.on_transcript("hmm", now=101).kind == "forward"

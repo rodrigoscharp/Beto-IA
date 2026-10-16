@@ -98,3 +98,20 @@ async def test_cache_separa_por_voz():
 
     await _tts(handler).prewarm(["Um segundo."])
     assert not _tts(handler, TtsCfg(voice="Outra")).cached("Um segundo.")
+
+
+async def test_resposta_200_vazia_nao_entra_no_cache():
+    tts = _tts(lambda _req: httpx.Response(200, content=b""))
+    assert await tts.prewarm(["Um segundo."]) == 0
+    assert not tts.cached("Um segundo.")
+
+
+async def test_frase_vazia_e_pulada_no_prewarm():
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(200, content=b"\x01\x00" * 480)
+
+    assert await _tts(handler).prewarm(["", "   "]) == 0
+    assert calls == []

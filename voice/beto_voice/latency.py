@@ -14,7 +14,10 @@ def _stage(processor: str) -> str | None:
 
 
 def latency_line(total: float, turn: float | None, ttfb: list[tuple[str, float]], acked: bool) -> str:
-    """``total`` e ``turno`` (duração da fala) vêm do observer do Pipecat; etapas ausentes ou desconhecidas somem."""
+    """``total`` e ``turno`` vêm do observer do Pipecat; etapas ausentes ou desconhecidas somem.
+
+    ``turno`` vai do silêncio do chefe até a liberação do turno (VAD, STT e smart-turn), não é a duração da fala.
+    """
     parts = [f"total={total:.2f}s"]
     if turn is not None:
         parts.append(f"turno={turn:.2f}s")

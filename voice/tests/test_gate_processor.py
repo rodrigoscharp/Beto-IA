@@ -144,3 +144,13 @@ async def test_pergunta_pendente_manda_a_hesitacao_ao_cerebro(monkeypatch):
     gate.on_listen(p.clock())
     await p.process_frame(tf("hmm"), FrameDirection.DOWNSTREAM)
     assert [f.text for f in p.pushed if isinstance(f, TranscriptionFrame)] == ["hmm"]
+
+
+async def test_parcial_passa_se_a_fala_comecou_com_o_gate_aberto(proc):
+    proc.gate.on_transcript("Beto, oi", now=100); proc.gate.on_bot_stopped(now=101)   # janela até 110
+    proc.clock.t = 108
+    await proc.process_frame(VADUserStartedSpeakingFrame(), FrameDirection.UPSTREAM)
+    proc.clock.t = 112
+    interim = InterimTranscriptionFrame("e amanh", "", "2026-10-05T10:00:00Z")
+    await proc.process_frame(interim, FrameDirection.DOWNSTREAM)
+    assert interim in proc.pushed

@@ -92,17 +92,20 @@ class VoiceStudioTTSService(TTSService):
         """Sintetiza as frases antes de precisarem. Devolve quantas ficaram no cache; falha numa não derruba as outras."""
         for text in texts:
             key = _cache_key(text, self._cfg)
-            if key in _CACHE:
+            if not key[0] or key in _CACHE:   # frase vazia não vai ao VoiceStudio
                 continue
             try:
                 r = await self._client.post("/v1/audio/speech", json=speech_payload(key[0], self._cfg))
                 if r.status_code != 200:
                     logger.warning(f"[voz] prewarm de {key[0]!r}: VoiceStudio {r.status_code}")
                     continue
+                if not r.content:
+                    logger.warning(f"[voz] prewarm de {key[0]!r}: VoiceStudio respondeu sem áudio")
+                    continue
                 _CACHE[key] = r.content
             except httpx.HTTPError as e:
                 logger.warning(f"[voz] prewarm de {key[0]!r} falhou: {e}")
-        return len({t.strip() for t in texts if self.cached(t)})
+        return len({t.strip() for t in texts if t.strip() and self.cached(t)})
 
     async def _cached_chunks(self, pcm: bytes) -> AsyncIterator[bytes]:
         """Entrega o PCM do cache em pedaços de chunk_size, como o corpo da resposta HTTP."""
@@ -143,4 +146,3 @@ class VoiceStudioTTSService(TTSService):
             yield TTSStoppedFrame(context_id=context_id)
         finally:
             await self.stop_ttfb_metrics()
-

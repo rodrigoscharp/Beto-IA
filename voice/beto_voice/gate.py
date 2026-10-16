@@ -7,10 +7,9 @@ por ``follow_up_secs``; toque no mascote (ou wake word sozinho) abre por ``liste
 Modo contínuo: depois que o Beto responde, a janela fica aberta por ``idle_close_secs`` (e não só ``follow_up_secs``),
 para a conversa fluir sem repetir o wake word. A janela vale pelo INÍCIO da fala: se o chefe começou a falar com o
 gate aberto, a transcrição é aceita mesmo que chegue depois de a janela fechar (o STT demora), até
-``speech_grace_secs`` depois do início. Hesitação ("hmm",
-"peraí", "deixa eu pensar") não vai ao cérebro nem encerra: devolve ``hold`` e renova a janela. A exceção é a
-pergunta pendente (o cérebro foi interrompido antes de responder): aí a hesitação vai ao cérebro, que junta as falas
-e responde a pergunta.
+``speech_grace_secs`` depois do início. Hesitação ("hmm", "peraí", "deixa eu pensar") não vai ao cérebro nem encerra:
+devolve ``hold`` e renova a janela. A exceção é a pergunta pendente (o cérebro foi interrompido antes de responder):
+aí a hesitação vai ao cérebro, que junta as falas e responde a pergunta.
 
 Puro: relógio entra por parâmetro, sem Pipecat.
 """
@@ -30,6 +29,10 @@ Kind = Literal["forward", "listen", "end", "hold", "ignore"]
 class Decision:
     kind: Kind
     text: str = ""
+
+
+# Hesitação sem grafia fixa, já normalizada: "hm"/"hmmm", "hum"/"huum", "ahn"/"ahnn".
+_HOLD_SOUNDS = (r"h+m+", r"hu+m+", r"ahn+")
 
 
 def norm(s: str) -> str:
@@ -71,10 +74,10 @@ class ConversationGate:
             r"^(?:beto\s+)?(?:" + "|".join(re.escape(e) for e in sorted(ends, key=len, reverse=True)) + r")(?:\s+(?:beto|chefe))?$"
         ) if ends else None
         holds = {norm(h) for h in (hold_phrases or []) if norm(h)}
-        # "hmm", "peraí beto", "deixa eu pensar": a frase inteira é a hesitação.
-        self._hold = re.compile(
-            r"^(?:" + "|".join(re.escape(h) for h in sorted(holds, key=len, reverse=True)) + r")(?:\s+beto)?$"
-        ) if holds else None
+        # "hmm", "peraí beto", "deixa eu pensar": a frase inteira é a hesitação. Além da lista, as grafias que o
+        # Whisper inventa para o mesmo som ("hm", "hmmm", "huum", "ahnn").
+        hold_alts = [re.escape(h) for h in sorted(holds, key=len, reverse=True)] + list(_HOLD_SOUNDS)
+        self._hold = re.compile(r"^(?:" + "|".join(hold_alts) + r")(?:\s+beto)?$") if holds else None
 
     @property
     def _window_secs(self) -> float:

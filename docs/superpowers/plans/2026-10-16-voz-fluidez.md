@@ -494,11 +494,12 @@ Verificação manual; nenhum código novo, a não ser correção do que o ensaio
 - [ ] **Step 1: Subir tudo**
 
 Run: `npm run dev` na raiz (cérebro local) e `cd voice && uv run beto-voice`, com o VoiceStudio no ar.
-Expected: log do serviço mostra `ack` com 12 frases prontas logo depois da conexão do navegador.
+Expected: log do serviço mostra `ack` com 11 frases prontas (o log mostra 11/11) logo depois da conexão do navegador.
 
 - [ ] **Step 2: Roteiro de 10 minutos, conduzido pelo Rodrigo**
 
 Cumprimento; pergunta técnica; "o que tenho amanhã?" (agenda); "gastei 30 no mercado" (My Hub); pausa de 15 s pensando e continuar sem dizer "Beto"; "hmm, deixa eu pensar" no meio; "beleza" sozinho seguido de outra pergunta; começar a falar 8 s depois de uma resposta e falar por 5 s; "tchau Beto".
+Depois, três passadas curtas: uma com `continuous = false`, falando com pausa perto dos 9 s depois de uma resposta; um "hmm" logo depois de um ack (num turno de agenda ou My Hub); medir o primeiro turno logo após conectar e de novo depois do log de prewarm dos acks.
 Expected: nenhum turno ignorado; ack nos turnos de agenda e My Hub; a conversa só fecha no "tchau".
 
 - [ ] **Step 3: Ler as medidas**
