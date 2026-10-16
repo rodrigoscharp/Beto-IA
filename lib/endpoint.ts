@@ -2,8 +2,9 @@
    Antes era 700ms fixo, e qualquer hesitação ("é, eu...", "aí ele...") fechava o turno no meio da frase.
    Agora o respiro depende de como a frase termina: pendurada num conectivo, espera bem mais. Puro: testável. */
 
-/** Silêncio para frase que parece completa. */
-const BASE_MS = 1400;
+/** Silêncio para frase que parece completa. 1,4 s deixava a resposta com cara de demora; frase pendurada continua
+    protegida pelo HANGING_MS. */
+const BASE_MS = 1000;
 /** Fala curtinha (até 2 palavras): provavelmente é o começo. */
 const SHORT_MS = 2200;
 /** Termina em conectivo, hesitação ou vírgula: ele ainda vai continuar. */

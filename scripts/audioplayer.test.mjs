@@ -62,12 +62,13 @@ test("fala nova encerra a anterior, e eventos atrasados da anterior não atingem
   const el = fakeEl();
   const p = new SharedPlayer(() => el);
   const log = [];
-  p.play("blob:a", { onPlaying: () => log.push("a+"), onEnd: () => log.push("a.") });
+  p.play("blob:a", { onPlaying: () => log.push("a+"), onEnd: (cut) => log.push(`a.${cut}`) });
   const oldEnded = el.onended;
-  p.play("blob:b", { onPlaying: () => log.push("b+"), onEnd: () => log.push("b.") });
+  p.play("blob:b", { onPlaying: () => log.push("b+"), onEnd: (cut) => log.push(`b.${cut}`) });
   oldEnded?.();             // evento da frase a chegando tarde
   el.onplaying();
-  assert.deepEqual(log, ["a.", "b+"]);
+  el.onended();
+  assert.deepEqual(log, ["a.true", "b+", "b.false"]);
 });
 
 test("stop da fala atual silencia sem disparar erro; stop de uma fala antiga não corta a atual", () => {
@@ -75,7 +76,7 @@ test("stop da fala atual silencia sem disparar erro; stop de uma fala antiga nã
   const p = new SharedPlayer(() => el);
   const log = [];
   const a = p.play("blob:a", { onPlaying() {}, onEnd: () => log.push("a.") });
-  const b = p.play("blob:b", { onPlaying() {}, onEnd: () => log.push("b.") });
+  const b = p.play("blob:b", { onPlaying() {}, onEnd: (cut) => log.push(`b.${cut}`) });
   a.stop();
   assert.equal(el.src, "blob:b");
   b.stop();
@@ -83,16 +84,16 @@ test("stop da fala atual silencia sem disparar erro; stop de uma fala antiga nã
   assert.equal(el.removed, 1);          // removeAttribute + load, não src = "" (que dispara erro)
   assert.equal(el.loads, 1);
   assert.equal(el.onerror, null);
-  assert.deepEqual(log, ["a.", "b."]);
+  assert.deepEqual(log, ["a.", "b.false"]);
 });
 
 test("stopAll encerra o que estiver tocando", () => {
   const el = fakeEl();
   const p = new SharedPlayer(() => el);
-  let ended = 0;
-  p.play("blob:a", { onPlaying() {}, onEnd: () => ended++ });
+  const cuts = [];
+  p.play("blob:a", { onPlaying() {}, onEnd: (cut) => cuts.push(cut) });
   p.stopAll();
   p.stopAll();
-  assert.equal(ended, 1);
+  assert.deepEqual(cuts, [true]);
   assert.equal(el.src, "");
 });

@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { silenceMs, afterWake, MAX_UTTERANCE_MS } from "../lib/endpoint.ts";
 
-test("frase completa espera um respiro de verdade, não 700ms", () => {
+test("frase completa espera um respiro (não 700ms) mas responde rápido (1,4 s parecia demora)", () => {
   const ms = silenceMs("me fala o que eu tenho na agenda amanhã");
-  assert.ok(ms >= 1200 && ms <= 1800, String(ms));
+  assert.ok(ms >= 900 && ms <= 1100, String(ms));
 });
 
 test("frase pendurada (conectivo, hesitação, vírgula) espera bem mais: ele ainda vai continuar", () => {

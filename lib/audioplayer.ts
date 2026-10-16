@@ -22,12 +22,13 @@ export interface AudioEl {
   removeAttribute(name: string): void;
 }
 
-export interface PlayHooks { onPlaying(): void; onEnd(): void }
+/** onEnd(cut): cut = outra fala ou um stopAll cortou esta; false = acabou, deu erro, foi recusada ou parou pelo próprio stop. */
+export interface PlayHooks { onPlaying(): void; onEnd(cut: boolean): void }
 
 export class SharedPlayer {
   private el: AudioEl | null = null;
   private seq = 0;
-  private current: { seq: number; end(): void } | null = null;
+  private current: { seq: number; end(cut: boolean): void } | null = null;
   unlocked = false;
   private make: () => AudioEl;
 
@@ -46,17 +47,17 @@ export class SharedPlayer {
     el.play().catch(() => {});
   }
 
-  /** Toca `url` no elemento único. Uma fala nova encerra a anterior (o onEnd dela é chamado). */
+  /** Toca `url` no elemento único. Uma fala nova encerra a anterior (o onEnd dela é chamado com cut = true). */
   play(url: string, hooks: PlayHooks): { stop(): void } {
-    this.current?.end();
+    this.current?.end(true);
     const seq = ++this.seq;
     const el = this.element();
     let ended = false;
-    const end = () => {
+    const end = (cut: boolean) => {
       if (ended) return;
       ended = true;
       if (this.current?.seq === seq) this.current = null;
-      hooks.onEnd();
+      hooks.onEnd(cut);
     };
     this.current = { seq, end };
     const mine = () => this.seq === seq;   // evento atrasado de uma frase anterior não conta
@@ -65,14 +66,14 @@ export class SharedPlayer {
     el.pause();
     el.src = url;
     el.onplaying = () => { if (mine()) hooks.onPlaying(); };
-    el.onended = () => { if (mine()) end(); };
-    el.onerror = () => { if (mine()) end(); };
-    el.play().catch(() => { if (mine()) end(); });
+    el.onended = () => { if (mine()) end(false); };
+    el.onerror = () => { if (mine()) end(false); };
+    el.play().catch(() => { if (mine()) end(false); });
 
     return {
       stop: () => {
         if (mine()) this.silence(el);
-        end();
+        end(false);
       },
     };
   }
@@ -82,7 +83,7 @@ export class SharedPlayer {
     const cur = this.current;
     if (!cur) return;
     if (this.el) this.silence(this.el);
-    cur.end();
+    cur.end(true);
   }
 
   private detach(el: AudioEl): void {
