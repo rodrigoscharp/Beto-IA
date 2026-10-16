@@ -241,8 +241,9 @@ export async function POST(req: NextRequest) {
     const hubOn = myHubWriteConfigured();
     const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured(), content: myHubConfigured() }, forceFull === true);
     const mode: PromptMode = plan.mode;
-    // Conversa simples não precisa do My Hub: pula a ida ao servidor dele.
-    const [memories, myhub] = await Promise.all([getCachedMemories(), mode === "full" ? getMyHubContext() : Promise.resolve(null)]);
+    // O My Hub vai também na conversa simples (só leitura): é com ele que o Beto liga o papo à vida do chefe.
+    // Tem cache de 2 min e, sem cache, espera no máximo 1,5 s (lib/myhub.ts).
+    const [memories, myhub] = await Promise.all([getCachedMemories(), getMyHubContext()]);
     const ctxMs = Date.now() - t0;
 
     // Serviço local de voz: uma linha JSON por evento (lib/voicewire.ts). A decisão de rota é toda daqui: turno com

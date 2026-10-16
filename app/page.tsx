@@ -83,12 +83,14 @@ const TAG = {
 
 /* Saudações puras ("bom dia", "oi", "tudo bem?") o Beto responde na hora, sem modelo:
    as respostas são áudio pré-gerado guardado no navegador. Qualquer coisa a mais na frase vai para o modelo. */
+/* Respostas prontas para as saudações depois da primeira do dia (a primeira vai para o modelo, que puxa assunto do
+   My Hub). Variadas e quase sem "chefe": com poucas frases e o mesmo vocativo, ele soava como gravação. */
 const GREETINGS = {
-  bomdia:  ["Bom dia, chefe! Quer que eu passe o briefing do dia?", "Bom dia, chefe! Bora pra mais um dia. Quer o briefing?"],
-  boatarde:["Boa tarde, chefe! No que posso ajudar?", "Boa tarde, chefe! Diga aí."],
-  boanoite:["Boa noite, chefe! Como posso ajudar?", "Boa noite, chefe! Tô por aqui."],
-  oi:      ["E aí, chefe! Tô na área. O que manda?", "Fala, chefe! Pode falar.", "Opa, chefe! Diga aí."],
-  tudobem: ["Tudo certo por aqui, chefe! E você, como tá?", "Tranquilo, chefe! E contigo?"],
+  bomdia:  ["Bom dia de novo! Quer o briefing do dia?", "Bom dia! Tô por aqui.", "Opa, bom dia! O que vem agora?"],
+  boatarde:["Boa tarde! Manda.", "Boa tarde, chefe. No que a gente mexe agora?", "Opa, boa tarde! Pode falar."],
+  boanoite:["Boa noite! Tô aqui.", "Boa noite! O que ficou pendente hoje?", "Boa noite, chefe. Pode falar."],
+  oi:      ["Oi! Pode falar.", "Fala! Tô ouvindo.", "Opa, diz aí.", "E aí, chefe. Manda.", "Tô aqui. O que precisa?"],
+  tudobem: ["Tudo certo por aqui! E com você?", "Tranquilo! E aí, como tá o dia?", "Tudo em ordem. E você, firme?"],
 } as const;
 type GreetingKind = keyof typeof GREETINGS;
 
@@ -104,8 +106,19 @@ function greetingKind(text: string): GreetingKind | null {
 }
 
 const GREETING_PHRASES: string[] = Object.values(GREETINGS).flatMap(v => [...v]);
-const GREETING_CACHE = "beto-fillers-v3";   // muda junto com a voz do TTS: o nome novo regera as 11 saudações (pouca cota) com a voz nova
-const OLD_GREETING_CACHES = ["beto-fillers-v2"];   // caches de vozes antigas, apagados na abertura
+const GREETED_KEY = "beto-greeted-day";
+
+/** Primeira saudação do dia (data de Brasília)? Marca o dia ao responder sim. Sem localStorage, fica com a resposta pronta. */
+function firstGreetingToday(): boolean {
+  const today = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  try {
+    if (localStorage.getItem(GREETED_KEY) === today) return false;
+    localStorage.setItem(GREETED_KEY, today);
+    return true;
+  } catch { return false; }
+}
+const GREETING_CACHE = "beto-fillers-v4";   // muda junto com a voz do TTS ou com as frases: o nome novo regera as saudações (pouca cota)
+const OLD_GREETING_CACHES = ["beto-fillers-v2", "beto-fillers-v3"];   // caches de vozes antigas, apagados na abertura
 const PREBUFFER_S = 0.5;        // segundos de áudio na frente antes de começar a tocar a resposta
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
@@ -1015,9 +1028,10 @@ export default function JarvisPage() {
     turnT0.current    = performance.now();
     turnVia.current   = "full";
 
-    // Saudação pura: responde direto, sem "deixa eu pensar" e sem esperar o modelo.
+    // Saudação pura: responde direto, sem "deixa eu pensar" e sem esperar o modelo. A primeira do dia é a exceção:
+    // vai para o modelo, que cumprimenta e puxa uma coisa do My Hub (regra SAUDAÇÃO do prompt).
     const greeting = greetingKind(text);
-    if (greeting) {
+    if (greeting && !firstGreetingToday()) {
       turnVia.current = "greeting";
       const options = GREETINGS[greeting];
       const reply   = options[Math.floor(Math.random() * options.length)]!;
