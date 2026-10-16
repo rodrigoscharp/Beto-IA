@@ -1,4 +1,4 @@
-/* Voz do Beto: o VoiceStudio rodando no Mac (http://localhost:3900). Quem chama é o navegador, porque a Vercel não
+/* Voz do Beto: o VoiceStudio rodando no Mac (https://localhost:3900, certificado do mkcert). Quem chama é o navegador, porque a Vercel não
    alcança o localhost do Mac. Sem imports: roda no navegador e nos testes.
 
    - voz fixa: o perfil "Beto" do VoiceStudio (clonado de voice/assets/beto-ref.wav), para não mudar entre frases;
@@ -27,7 +27,7 @@ const positive = (v: string | undefined, fallback: number) => {
 
 export function voiceStudioConfig(env: Env = BROWSER_ENV): VoiceStudioCfg {
   return {
-    url:   (env.NEXT_PUBLIC_VOICESTUDIO_URL || "http://localhost:3900").replace(/\/+$/, ""),
+    url:   (env.NEXT_PUBLIC_VOICESTUDIO_URL || "https://localhost:3900").replace(/\/+$/, ""),
     voice: env.NEXT_PUBLIC_VOICESTUDIO_VOICE || "Beto",
     steps: Math.round(positive(env.NEXT_PUBLIC_VOICESTUDIO_STEPS, 8)),
     speed: positive(env.NEXT_PUBLIC_VOICESTUDIO_SPEED, 1),

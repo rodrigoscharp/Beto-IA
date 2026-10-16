@@ -38,7 +38,7 @@ function samples(v) {
 const okJson = (obj) => async () => new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } });
 
 test("config: padrões e env", () => {
-  assert.deepEqual(voiceStudioConfig({}), { url: "http://localhost:3900", voice: "Beto", steps: 8, speed: 1 });
+  assert.deepEqual(voiceStudioConfig({}), { url: "https://localhost:3900", voice: "Beto", steps: 8, speed: 1 });
   assert.equal(voiceStudioConfig({ NEXT_PUBLIC_VOICESTUDIO_URL: "http://x:1/" }).url, "http://x:1");
   assert.equal(voiceStudioConfig({ NEXT_PUBLIC_VOICESTUDIO_STEPS: "abc" }).steps, 8);
   assert.equal(voiceStudioConfig({ NEXT_PUBLIC_VOICESTUDIO_STEPS: "16", NEXT_PUBLIC_VOICESTUDIO_SPEED: "1.1" }).steps, 16);
@@ -81,7 +81,7 @@ test("fetchSpeech: pede o endpoint certo e lead acrescenta 0,4 s ao áudio", asy
   let seen;
   const fetchImpl = async (url, init) => { seen = { url, init }; return new Response(wav.slice(0), { status: 200 }); };
   const plain = await fetchSpeech("oi", { fetchImpl });
-  assert.equal(seen.url, "http://localhost:3900/v1/audio/speech");
+  assert.equal(seen.url, "https://localhost:3900/v1/audio/speech");
   assert.equal(seen.init.method, "POST");
   assert.equal(JSON.parse(seen.init.body).voice, "Beto");
   assert.equal(plain.size, wav.byteLength);

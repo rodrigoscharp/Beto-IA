@@ -14,7 +14,7 @@ def test_le_o_toml_do_repositorio_com_os_padroes():
     assert "Muno" in cfg.stt.vocabulary
     assert cfg.stt.engine == "mlx"
     assert cfg.brain.token == "tok"
-    assert (cfg.tts.url, cfg.tts.voice, cfg.tts.num_step) == ("http://127.0.0.1:3900", "Beto", 8)
+    assert (cfg.tts.url, cfg.tts.voice, cfg.tts.num_step) == ("https://localhost:3900", "Beto", 8)
     assert cfg.server.port == 7860
 
 

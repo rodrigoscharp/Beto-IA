@@ -88,7 +88,9 @@ class AckCfg:
 class TtsCfg:
     """Voz pelo VoiceStudio no Mac: o perfil "Beto" no modo rápido (8 passos), a mesma voz do app."""
 
-    url: str = "http://127.0.0.1:3900"
+    url: str = "https://localhost:3900"
+    # Autoridade que assina o certificado do VoiceStudio. Vazio = a do mkcert, se existir (o httpx não lê o Keychain).
+    ca_file: str = ""
     voice: str = "Beto"
     num_step: int = 8
     speed: float = 1.0

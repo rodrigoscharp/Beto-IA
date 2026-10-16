@@ -23,13 +23,18 @@
     <string>127.0.0.1</string>
     <string>--port</string>
     <string>3900</string>
+    <!-- HTTPS com o certificado local do mkcert: o Safari não deixa uma página https (o Beto na Vercel) chamar http. -->
+    <string>--ssl-certfile</string>
+    <string>__CERT__</string>
+    <string>--ssl-keyfile</string>
+    <string>__KEY__</string>
   </array>
 
   <key>EnvironmentVariables</key>
   <dict>
     <!-- Origens que podem pedir voz pelo navegador: as padrão do VoiceStudio + o Beto (Vercel e npm run dev). -->
     <key>OMNIVOICE_ALLOWED_ORIGINS</key>
-    <string>http://localhost:3900,http://127.0.0.1:3900,https://betoia.vercel.app,http://localhost:3000</string>
+    <string>https://localhost:3900,https://127.0.0.1:3900,http://localhost:3900,http://127.0.0.1:3900,https://betoia.vercel.app,http://localhost:3000</string>
     <key>PATH</key>
     <string>__HOME__/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>

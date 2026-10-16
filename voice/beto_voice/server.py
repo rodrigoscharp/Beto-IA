@@ -91,7 +91,7 @@ def main() -> None:
     cfg = load_config()
     logger.remove()
     logger.add(sys.stderr, level="INFO")
-    if not voicestudio_online(cfg.tts.url):
+    if not voicestudio_online(cfg.tts.url, ca_file=cfg.tts.ca_file):
         logger.warning(f"[voz] VoiceStudio não respondeu em {cfg.tts.url}: o Beto não vai falar")
     if not cfg.brain.token:
         logger.warning("[voz] VOICE_SERVICE_TOKEN vazio: /api/chat vai recusar")

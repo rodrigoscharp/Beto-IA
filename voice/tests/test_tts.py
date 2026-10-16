@@ -115,3 +115,13 @@ async def test_frase_vazia_e_pulada_no_prewarm():
 
     assert await _tts(handler).prewarm(["", "   "]) == 0
     assert calls == []
+
+
+def test_tls_verify_usa_a_autoridade_do_mkcert_no_https(tmp_path):
+    from beto_voice.tts import tls_verify
+    ca = tmp_path / "rootCA.pem"
+    ca.write_text("x")
+    assert tls_verify("https://localhost:3900", mkcert_ca=ca) == str(ca)
+    assert tls_verify("https://localhost:3900", mkcert_ca=tmp_path / "nao-existe.pem") is True
+    assert tls_verify("http://127.0.0.1:3900", mkcert_ca=ca) is True
+    assert tls_verify("https://localhost:3900", ca_file="~/minha-ca.pem", mkcert_ca=ca).endswith("/minha-ca.pem")
