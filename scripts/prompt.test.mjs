@@ -31,25 +31,45 @@ test("com calendar: o guia das ferramentas entra, com data de hoje, confirmaçã
   assert.ok(!chat.includes("list_events"), "modo conversa nunca leva o guia");
 });
 
-test("modo conversa não leva integrações nem My Hub, mas leva a personalidade e a emoção", () => {
+test("modo conversa não leva integrações, mas leva o My Hub (leitura), a personalidade e a emoção", () => {
   assert.ok(!chat.includes("━━━ SPOTIFY"));
   assert.ok(!chat.includes("REGRA DE TAGS"));
-  assert.ok(!chat.includes("MYHUB-CTX"));
-  for (const keep of ["Você é o BETO", "EMOÇÃO (OBRIGATÓRIO", "REGRA DE VOZ", "HONESTIDADE", "TAMANHO:", "acorda cedo", "quinta-feira, 1 de outubro"]) {
+  assert.ok(chat.includes("MYHUB-CTX"), "sem o My Hub ele não consegue ligar a conversa à vida do chefe");
+  for (const keep of ["Você é o BETO", "EMOÇÃO (OBRIGATÓRIO", "REGRA DE VOZ", "HONESTIDADE", "TAMANHO", "acorda cedo", "quinta-feira, 1 de outubro"]) {
     assert.ok(chat.includes(keep), keep);
   }
   assert.ok(chat.includes(NEED_TOOLS_TAG));
 });
 
 test("modo conversa é bem menor que o completo", () => {
-  assert.ok(chat.length < full.length * 0.7, `${chat.length} vs ${full.length}`);
+  // As regras de fala (tamanho, variar, contexto, próximo passo) valem nos dois modos, então a folga é menor que antes.
+  assert.ok(chat.length < full.length * 0.75, `${chat.length} vs ${full.length}`);
 });
 
-test("o prompt pede respostas mais curtas e oferece detalhar", () => {
+test("tamanho por tipo de pergunta, sem faixa fixa nem fecho padrão", () => {
   for (const p of [full, chat]) {
-    assert.ok(p.includes("30 a 80 palavras"));
-    assert.ok(p.includes("quer que eu detalhe?"));
+    assert.ok(!p.includes("30 a 80 palavras"), "faixa única para tudo saiu");
     assert.ok(!p.includes("50 a 150 palavras"));
+    assert.ok(!p.includes('termine com "quer que eu detalhe?"'), "oferecer detalhe não é fecho padrão");
+    for (const k of ["Fato, comando ou sim/não", "Decisão de peso", "uma frase"]) assert.ok(p.includes(k), k);
+  }
+});
+
+test("fala natural: sem lista de bordões para copiar, com regra de variar e de não encher linguiça", () => {
+  for (const p of [full, chat]) {
+    assert.ok(!p.includes('"e aí, chefe", "beleza", "bora"'), "lista de bordões vira script");
+    assert.ok(p.includes("VARIE"), "regra de variar abertura e fecho");
+    assert.ok(p.includes("Boa pergunta"), "proíbe abertura de enchimento");
+    assert.ok(/"chefe"[^.]*no máximo uma vez a cada três ou quatro respostas/.test(p), "limite de 'chefe'");
+  }
+});
+
+test("contexto e próximo passo: liga ao que já sabe e fecha com gancho concreto, nunca genérico", () => {
+  for (const p of [full, chat]) {
+    assert.ok(p.includes("USE O QUE VOCÊ JÁ SABE"));
+    assert.ok(p.includes("nunca peça o que ele já disse"));
+    assert.ok(p.includes("PRÓXIMO PASSO"));
+    assert.ok(p.includes('"mais alguma coisa?"'), "proíbe gancho genérico");
   }
 });
 
@@ -113,4 +133,13 @@ test("com content: o guia da ferramenta de plano entra e manda dar briefing fala
   const p = buildSystemPrompt({ ...input, content: true }, "full");
   for (const k of ["content_plan", "briefing", "fala por fala"]) assert.ok(p.includes(k), k);
   assert.ok(!full.includes("━━━ PLANOS DE CONTEÚDO (FERRAMENTA)"), "sem a flag, o guia não entra");
+});
+
+test("saudação: cumprimenta e traz no máximo uma coisa real dos dados, sem inventar", () => {
+  for (const p of [full, chat]) {
+    assert.ok(p.includes("SAUDAÇÃO"));
+    assert.ok(/SAUDAÇÃO[^\n]*UMA coisa[^\n]*DADOS/.test(p), "uma coisa só, e só dos dados");
+    assert.ok(/SAUDAÇÃO[^\n]*nada relevante[^\n]*briefing/.test(p), "sem nada nos dados: só cumprimenta e oferece o briefing");
+  }
+  assert.ok(!full.includes("(o app já cuida disso)"), "a saudação não é mais só do app");
 });

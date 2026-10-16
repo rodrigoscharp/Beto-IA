@@ -15,7 +15,7 @@ export const toolNames = () => [...CALENDAR_TOOLS, ...MYHUB_TOOLS, ...MEMORY_TOO
 export function buildRequest(conversa, fx) {
   const plan = planTurn(conversa, ENV);
   const sets = plan.sets ?? { calendar: false, myhub: false, memory: false, content: false };
-  const myhub = plan.mode === "full" ? fx.myhub : null;   // a rota só busca o My Hub no modo completo
+  const myhub = fx.myhub;   // a rota manda o My Hub nos dois modos (na conversa, só a parte de leitura)
   const system = buildSystemPrompt({
     memories: fx.memorias,
     myhubBlock: myHubPromptBlock(myhub, fx.agora.date, { writeConfigured: ENV.myhubWrite, tools: sets.myhub }),
