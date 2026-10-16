@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createGhost, type Ghost } from "./ghost";
 import { mascotEmotion, mascotTalking, shouldHop } from "./mapping";
+import { ELEV, FOV, FRAME_MS, stageFit } from "./stage";
 import GhostFallback from "./GhostFallback";
 import type { Emotion, VoiceState } from "@/lib/emotion";
 
@@ -24,17 +25,6 @@ export interface BetoGhostProps {
   onClick: () => void;
 }
 
-const FRAME_MS = 1000 / 30 - 1;   // teto de 30 quadros por segundo (o -1 absorve a variação do relógio)
-const FOV    = 30;
-const VIEW   = 0.38;    // lado (m) do quadro que precisa caber: corpo + props (nuvem, Zzz, notas, vapor)
-const CY     = 0.14;    // centro vertical desse quadro
-// Janelinha no canto: fecha o enquadramento no corpo (props podem cortar) para ele não sumir lá dentro.
-const VIEW_SMALL = 0.25;
-const CY_SMALL   = 0.115;
-const SMALL_PX   = 280;   // menor lado da janela (px) em que o zoom fechado vale inteiro
-const LARGE_PX   = 600;   // a partir daqui, enquadramento normal
-const MAX_PX = 640;     // em tela grande ele para de crescer
-const ELEV   = 0.12;    // câmera um pouco acima, olhando levemente para baixo
 const SHADOW = { dark: 0.45, light: 0.18 } as const;
 
 export default function BetoGhost({
@@ -53,7 +43,7 @@ export default function BetoGhost({
     if (!host) return;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
       setFailed(true);
       return;
@@ -66,7 +56,7 @@ export default function BetoGhost({
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(FOV, 1, 0.01, 20);
+    const camera = new THREE.PerspectiveCamera(FOV, 1, 0.01, 20);   // canvas quadrado: aspecto 1
 
     // estúdio neutro do original (three-d-stage.js), em escala do mascote
     scene.add(new THREE.HemisphereLight(0xffffff, 0xd8d2c4, 1.0));
@@ -91,20 +81,12 @@ export default function BetoGhost({
     scene.add(ghost.group);
     ghostRef.current = ghost;
 
+    // Canvas quadrado no centro da tela, só em volta do mascote (ver ./stage.ts); o clique vale na tela toda.
     const fit = () => {
-      const w = host.clientWidth || 1, h = host.clientHeight || 1;
-      renderer.setSize(w, h, false);
-      renderer.domElement.style.width = "100%";
-      renderer.domElement.style.height = "100%";
-      camera.aspect = w / h;
-      // o quadro VIEW×VIEW ocupa `px` pixels no menor lado da tela
-      const side = Math.min(w, h);
-      const t = Math.min(Math.max((side - SMALL_PX) / (LARGE_PX - SMALL_PX), 0), 1);   // 0 = janelinha, 1 = normal
-      const view = VIEW_SMALL + (VIEW - VIEW_SMALL) * t;
-      const cy = CY_SMALL + (CY - CY_SMALL) * t;
-      const px = Math.min(side * (0.96 - 0.08 * t), MAX_PX);
-      const visibleH = view * h / px;
-      const d = visibleH / 2 / Math.tan((FOV * Math.PI) / 360);
+      const { side, cy, distance: d } = stageFit(host.clientWidth || 1, host.clientHeight || 1);
+      renderer.setSize(side, side, false);
+      renderer.domElement.style.width = `${side}px`;
+      renderer.domElement.style.height = `${side}px`;
       camera.position.set(0, cy + d * Math.sin(ELEV), d * Math.cos(ELEV));
       camera.lookAt(0, cy, 0);
       camera.updateProjectionMatrix();
@@ -118,8 +100,8 @@ export default function BetoGhost({
     onMq();
     mq.addEventListener("change", onMq);
 
-    // 30 quadros por segundo bastam para as animações do mascote. Na taxa do monitor (até 165 Hz), com sombra e
-    // antialias, ele ocupava a GPU que o VoiceStudio usa para gerar a voz, e as frases demoravam a ponto de sumir.
+    // Teto de 60 quadros por segundo: na taxa do monitor (até 165 Hz) ele dividiria a GPU com o VoiceStudio, que gera
+    // a voz, sem ganho visível.
     let last = performance.now();
     const loop = (now: number) => {
       if (now - last < FRAME_MS) return;
