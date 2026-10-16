@@ -51,6 +51,37 @@ class TurnCfg:
     barge_in: bool = True
     wake_words: list[str] = field(default_factory=lambda: ["beto"])
     end_phrases: list[str] = field(default_factory=list)
+    continuous: bool = True
+    idle_close_secs: float = 60.0
+    hold_phrases: list[str] = field(
+        default_factory=lambda: ["hmm", "hum", "peraí", "pera", "espera", "deixa eu pensar", "deixa eu ver", "calma"]
+    )
+
+
+@dataclass
+class AckCfg:
+    """Frases curtas que o Beto fala enquanto busca algo, uma lista por tipo de pedido (sorteadas na hora)."""
+
+    conteudo: list[str] = field(default_factory=lambda: ["Deixa eu abrir o roteiro.", "Vou pegar o plano."])
+    agenda: list[str] = field(
+        default_factory=lambda: ["Deixa eu ver a agenda.", "Só um segundo, olhando a agenda.", "Vou checar a agenda."]
+    )
+    myhub: list[str] = field(default_factory=lambda: ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."])
+    memoria: list[str] = field(default_factory=lambda: ["Deixa eu ver o que eu guardei.", "Um segundo."])
+    geral: list[str] = field(default_factory=lambda: ["Um segundo.", "Deixa eu ver.", "Já vejo isso."])
+
+    def phrases(self) -> dict[str, list[str]]:
+        return {
+            "conteudo": self.conteudo,
+            "agenda": self.agenda,
+            "myhub": self.myhub,
+            "memoria": self.memoria,
+            "geral": self.geral,
+        }
+
+    def all(self) -> list[str]:
+        """Todas as frases, uma vez cada, na ordem em que aparecem (para pré-gerar o áudio)."""
+        return list(dict.fromkeys(f for lista in self.phrases().values() for f in lista))
 
 
 @dataclass
@@ -78,6 +109,7 @@ class Config:
     turn: TurnCfg
     tts: TtsCfg
     server: ServerCfg
+    ack: AckCfg = field(default_factory=AckCfg)
 
 
 _SECTIONS = ("brain", "stt", "turn", "tts", "server")
@@ -121,9 +153,15 @@ def load_config(path: Path | None = None, env: Mapping[str, str] | None = None) 
         raise ValueError(f'beto-voice.toml: [stt].engine deve ser "mlx" ou "faster", veio "{stt.engine}"')
 
     turn = _build(TurnCfg, _section(raw, "turn"))
+    if turn.idle_close_secs <= 0:
+        raise ValueError(f"beto-voice.toml: [turn].idle_close_secs deve ser maior que 0, veio {turn.idle_close_secs}")
     tts_raw = dict(_section(raw, "tts"))
     tts_raw["url"] = env.get("VOICESTUDIO_URL") or tts_raw.get("url", TtsCfg.url)
     tts = _build(TtsCfg, tts_raw)
     tts.url = tts.url.rstrip("/")
     server = _build(ServerCfg, _section(raw, "server"))
-    return Config(brain=brain, stt=stt, turn=turn, tts=tts, server=server)
+    ack = _build(AckCfg, raw.get("ack") or {})   # [ack] é opcional: ausente = frases padrão
+    for tipo, frases in ack.phrases().items():
+        if not frases:
+            raise ValueError(f"beto-voice.toml: [ack].{tipo} precisa de pelo menos uma frase")
+    return Config(brain=brain, stt=stt, turn=turn, tts=tts, server=server, ack=ack)

@@ -52,3 +52,50 @@ def test_engine_invalido_da_erro(tmp_path: Path):
     p.write_text(base.replace('engine = "mlx"', 'engine = "cloud"'))
     with pytest.raises(ValueError, match="engine"):
         load_config(p, env=ENV)
+
+
+def write_toml(tmp_path: Path, turn_extra: str = "", ack: str | None = None) -> Path:
+    """TOML mínimo válido; ``ack`` (se vier) vira o corpo da seção [ack]."""
+    text = (
+        '[brain]\nurl = "x"\n[stt]\n[turn]\n' + turn_extra + "\n[tts]\n[server]\n"
+        + (f"[ack]\n{ack}\n" if ack is not None else "")
+    )
+    p = tmp_path / "c.toml"
+    p.write_text(text)
+    return p
+
+
+def test_padroes_novos_do_turno_e_do_ack(tmp_path):
+    cfg = load_config(write_toml(tmp_path), env={})
+    assert cfg.turn.continuous is True
+    assert cfg.turn.idle_close_secs == 60
+    assert "deixa eu pensar" in cfg.turn.hold_phrases
+    assert cfg.ack.phrases()["agenda"][0] == "Deixa eu ver a agenda."
+    assert set(cfg.ack.phrases()) == {"conteudo", "agenda", "myhub", "memoria", "geral"}
+    assert all(len(f.split()) <= 7 and "chefe" not in f.lower() for f in cfg.ack.all())
+
+
+def test_ack_all_nao_repete_e_mantem_a_ordem(tmp_path):
+    cfg = load_config(write_toml(tmp_path), env={})
+    frases = cfg.ack.all()
+    assert len(frases) == len(set(frases))
+    assert frases[0] == "Deixa eu abrir o roteiro."
+    assert frases.count("Um segundo.") == 1
+
+
+def test_idle_close_e_ack_vazio_sao_erro(tmp_path):
+    with pytest.raises(ValueError, match="idle_close_secs"):
+        load_config(write_toml(tmp_path, turn_extra="idle_close_secs = 0"), env={})
+    with pytest.raises(ValueError, match=r"\[ack\]"):
+        load_config(write_toml(tmp_path, ack="agenda = []"), env={})
+
+
+def test_ack_do_toml_substitui_so_a_chave_informada(tmp_path):
+    cfg = load_config(write_toml(tmp_path, ack='agenda = ["Olhando."]'), env={})
+    assert cfg.ack.phrases()["agenda"] == ["Olhando."]
+    assert cfg.ack.phrases()["geral"][0] == "Um segundo."
+
+
+def test_toml_do_repo_nao_encerra_com_beleza_nem_fechou():
+    cfg = load_config(env={})
+    assert "beleza" not in cfg.turn.end_phrases and "fechou" not in cfg.turn.end_phrases
