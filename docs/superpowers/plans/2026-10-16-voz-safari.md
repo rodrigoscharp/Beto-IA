@@ -16,7 +16,7 @@
 - Sem dependências novas no `package.json`.
 - `Strict-Transport-Security` nunca chega ao navegador pelo proxy.
 - Corpo da resposta passa sem buffer e sem descompactar.
-- Memória do proxy parado: menos de 60 MB residentes.
+- Memória do proxy parado: menos de 60 MB em `footprint <pid>`.
 - Comentários e mensagens em português, no estilo do repositório.
 
 ## Review Focus
@@ -70,7 +70,7 @@
   `~/Library/Application Support/beto-proxy/`; preenche o plist; `plutil -lint`; bootout/bootstrap com nova tentativa;
   espera `curl --cacert <CA mkcert> https://localhost:3443/login` dar 200 (até 30 s).
 - [ ] **Step 3:** Rodar os dois instaladores; `curl -sI https://localhost:3443/login` dá 200 sem
-  `strict-transport-security`; `ps -o rss` do proxy menor que 60 MB.
+  `strict-transport-security`; `footprint <pid>` do proxy menor que 60 MB.
 - [ ] **Step 4:** Commit `feat(proxy): LaunchAgent do proxy e origem local no VoiceStudio`.
 
 ### Task 3: Agenda e Spotify pelo token do servidor

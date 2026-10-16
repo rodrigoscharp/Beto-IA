@@ -33,7 +33,7 @@ chega ao log do VoiceStudio. O Rodrigo quer usar o Beto também no Safari e como
 ## Seria fracasso mesmo funcionando
 
 - O proxy deixa o Beto mais lento (resposta em stream chegando em blocos, ou espera extra por pedido).
-- O proxy come memória visível no Mac (meta: menos de 60 MB residentes parado).
+- O proxy come memória visível no Mac (meta: menos de 60 MB no Monitor de Atividade, medido com `footprint`).
 - O endereço local quebra o `http://localhost` de outras portas no Safari (ver HSTS abaixo).
 
 ## Como funciona
@@ -103,4 +103,4 @@ Safari / app do Dock
    `~/Library/Logs/voicestudio.log` mostra os `POST /v1/audio/speech` no horário do teste, com o Chrome fechado (o log
    não grava a origem).
 4. Arquivo > Adicionar ao Dock, abrir pelo Dock, repetir o passo 3.
-5. Memória do proxy parado com `ps -o rss`.
+5. Memória do proxy parado com `footprint <pid>` (o `ps -o rss` conta páginas compartilhadas do Node e infla o número).
