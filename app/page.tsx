@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { EMOTION_TAG, emotionFromName, parseEmotion, type Emotion, type VoiceState } from "@/lib/emotion";
 import { claimsWrite, needsTools, wantsCalendarWrite, wantsMemoryForget, wantsMemorySave, wantsMyHubWrite } from "@/lib/intent";
-import { ReplyStream, type StreamEvent } from "@/lib/replystream";
+import { ReplyStream, sentencesOf, type StreamEvent } from "@/lib/replystream";
 import { SpeechQueue } from "@/lib/speechqueue";
 import { fetchSpeech, voiceStudioOnline } from "@/lib/voicestudio";
 import MiniPlayer from "@/components/MiniPlayer";
@@ -120,6 +120,7 @@ function firstGreetingToday(): boolean {
 const GREETING_CACHE = "beto-fillers-v5";   // muda junto com a voz ou com as frases: o nome novo regera as saudações
 const OLD_GREETING_CACHES = ["beto-fillers-v2", "beto-fillers-v3", "beto-fillers-v4"];   // caches de vozes antigas, apagados na abertura
 /* Conversa contínua: depois de responder, o Beto já volta a ouvir sem precisar do nome dele. */
+const SPLIT_SPEECH_AT = 140;    // acima disso (caracteres), a fala vai frase a frase em vez de um áudio só
 const FOLLOWUP_MS    = 9000;   // quanto tempo ele espera você continuar antes de voltar ao wake word
 const FOLLOWUP_GAP   = 250;    // respiro entre o fim da voz dele e abrir o microfone (evita ouvir o próprio eco)
 const END_CONVERSATION = /^(valeu|obrigad[oa]|tchau|é isso|só isso|era isso|por hoje é isso|pode parar|pode ficar quieto|fechou|beleza)([\s,.!]+(beto|chefe))?[\s.!]*$/i;
@@ -494,6 +495,35 @@ export default function JarvisPage() {
     stopPlayback();
   }
 
+  /** Fila de fala frase a frase: pede o áudio de cada frase ao VoiceStudio e toca em ordem, já gerando a próxima. */
+  function newSpeechQueue(): SpeechQueue {
+    return new SpeechQueue({
+      fetchAudio: async (t, first) => {
+        try {
+          const blob = await voiceBlob(t, first);
+          return blob ? URL.createObjectURL(blob) : null;
+        } catch { return null; }
+      },
+      play: (url, hooks) => {
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        let finish: () => void = () => {};
+        const done = new Promise<void>((r) => { finish = r; });
+        audio.onplaying = () => { setTalking(true); hooks.onPlaying(); };
+        audio.onended = () => finish();
+        audio.onerror = () => finish();
+        audio.play().catch(() => finish());
+        void done.then(() => setTalking(false));   // a boca para entre uma frase e outra
+        return { done, stop: () => { audio.pause(); audio.src = ""; finish(); } };
+      },
+      showText:  (t) => { setTalking(false); setCaption(t); },
+      readingMs: (t) => Math.min(8000, 1500 + t.length * 55),
+      sleep:     (ms) => new Promise<void>((r) => setTimeout(r, ms)),
+      onFirstSound: firstSound,
+      revoke:    (u) => URL.revokeObjectURL(u),
+    });
+  }
+
   /** Fim da fala de um turno: volta a ouvir (conversa) ou ao wake word. */
   function endTurn(followUp: boolean) {
     if (followUp && !musicPlaying.current && !typedTurn.current && getSR()) {
@@ -638,6 +668,22 @@ export default function JarvisPage() {
     setCaption(text);
 
     const done = () => { setTalking(false); setCaption(""); onDone(); };
+
+    // Texto longo (resposta do caminho completo, briefing, email): frase a frase pela fila. Inteiro, o VoiceStudio
+    // levaria 30 s ou mais para devolver o áudio e a fala estourava o prazo, ficando muda; assim a primeira frase
+    // toca em uns 3 s e as outras são geradas enquanto ela toca.
+    const parts = text.length > SPLIT_SPEECH_AT ? sentencesOf(text) : [];
+    if (parts.length > 1) {
+      const q = newSpeechQueue();
+      queueRef.current = q;
+      for (const part of parts) q.push(part);
+      void q.end().then(() => {
+        if (q.isCancelled() || queueRef.current !== q) return;   // interrompido: quem interrompeu segue o fluxo
+        queueRef.current = null;
+        done();
+      });
+      return;
+    }
 
     // Sem o VoiceStudio (desligado, travado) o Beto NÃO troca por outra voz: o texto fica na tela pelo tempo de ler
     // e a conversa segue. O motivo vai para o console e o aviso "sem voz" aparece no canto.
@@ -1097,31 +1143,7 @@ export default function JarvisPage() {
       setMode("speaking");
       setEmotion(emotionNow);
       setTalking(false);
-      queue = new SpeechQueue({
-        fetchAudio: async (t, first) => {
-          try {
-            const blob = await voiceBlob(t, first);
-            return blob ? URL.createObjectURL(blob) : null;
-          } catch { return null; }
-        },
-        play: (url, hooks) => {
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          let finish: () => void = () => {};
-          const done = new Promise<void>((r) => { finish = r; });
-          audio.onplaying = () => { setTalking(true); hooks.onPlaying(); };
-          audio.onended = () => finish();
-          audio.onerror = () => finish();
-          audio.play().catch(() => finish());
-          void done.then(() => setTalking(false));   // a boca para entre uma frase e outra
-          return { done, stop: () => { audio.pause(); audio.src = ""; finish(); } };
-        },
-        showText:  (t) => { setTalking(false); setCaption(t); },
-        readingMs: (t) => Math.min(8000, 1500 + t.length * 55),
-        sleep:     (ms) => new Promise<void>((r) => setTimeout(r, ms)),
-        onFirstSound: firstSound,
-        revoke:    (u) => URL.revokeObjectURL(u),
-      });
+      queue = newSpeechQueue();
       queueRef.current = queue;
       return queue;
     };

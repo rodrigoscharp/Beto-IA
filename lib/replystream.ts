@@ -151,3 +151,12 @@ function lastBreak(buf: string, minPos: number): number {
   while ((m = re.exec(buf))) if (m.index >= minPos) at = m.index + 1;
   return at;
 }
+
+/** Divide uma resposta já completa em frases para a voz, com as mesmas regras do stream. Quem fala um texto longo
+    de uma vez (caminho sem stream) usa isto para tocar a primeira frase cedo e gerar as outras enquanto ela toca:
+    o VoiceStudio leva uns 3 s por frase, mas 30 s ou mais para uma resposta inteira. */
+export function sentencesOf(text: string): string[] {
+  const rs = new ReplyStream();
+  const events = [...rs.push(text), ...rs.finish().events];
+  return events.flatMap((e) => (e.type === "sentence" ? [e.text] : []));
+}

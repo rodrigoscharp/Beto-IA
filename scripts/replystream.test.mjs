@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ReplyStream } from "../lib/replystream.ts";
+import { ReplyStream, sentencesOf } from "../lib/replystream.ts";
 
 /* Alimenta o texto em pedaços de `n` caracteres e junta os eventos. */
 function run(text, n = 3) {
@@ -146,4 +146,23 @@ test("[NEEDTOOLS] cortado em pedaços de 1 caractere", () => {
   const r = run("[emo:neutro] Beleza, pode deixar comigo. [NEEDTOOLS]", 1);
   assert.equal(r.held, true);
   assert.ok(sentences(r).every((s) => !s.includes("NEED")));
+});
+
+test("sentencesOf: resposta inteira vira frases, na ordem e sem perder texto", () => {
+  const t = "Eu iria de Postgres. Você ganha transação e consulta relacional de graça, que agendamento usa muito! E o Mongo? Só se o esquema mudasse toda semana.";
+  const s = sentencesOf(t);
+  assert.ok(s.length >= 3, JSON.stringify(s));
+  assert.equal(s.join(" ").replace(/\s+/g, " "), t);
+});
+
+test("sentencesOf: texto curto ou vazio", () => {
+  assert.deepEqual(sentencesOf("Fechou."), ["Fechou."]);
+  assert.deepEqual(sentencesOf("   "), []);
+});
+
+test("sentencesOf: trecho gigante sem pontuação é cortado em pedaços de até ~220 caracteres", () => {
+  const t = Array.from({ length: 120 }, (_, i) => `palavra${i}`).join(" ");
+  const s = sentencesOf(t);
+  assert.ok(s.length > 1);
+  assert.ok(s.every((x) => x.length <= 240), JSON.stringify(s.map((x) => x.length)));
 });
