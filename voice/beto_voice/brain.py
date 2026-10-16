@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
@@ -114,9 +115,12 @@ Emit = Callable[[Frame], Awaitable[None]]
 class BetoBrainLLMService(LLMService):
     """LLM do pipeline: delega ao /api/chat e traduz a resposta em frames."""
 
-    def __init__(self, client: BrainClient, **kwargs):
+    def __init__(self, client: BrainClient, *, clock: Callable[[], float] = time.monotonic, **kwargs):
         super().__init__(settings=LLMSettings(model="beto-brain"), **kwargs)
         self._client = client
+        self._clock = clock
+        self.last_reply_secs: float | None = None   # do início de ``respond`` ao primeiro texto vindo do cérebro
+        self.last_acked = False   # a Task de ack liga; por ora nenhum turno tem ack
         self._undo: dict | None = None
         self._emotions: deque[str] = deque(maxlen=64)
 
@@ -142,6 +146,8 @@ class BetoBrainLLMService(LLMService):
         messages = build_messages(context_messages, list(self._emotions), self._client.history)
         filt = ReplyFilter()
         emotion: str | None = None
+        started = self._clock()
+        self.last_reply_secs = None
 
         async def handle(events: list[Event]) -> None:
             nonlocal emotion
@@ -158,6 +164,8 @@ class BetoBrainLLMService(LLMService):
         try:
             async for line in self._client.stream(messages, self._undo):
                 if "t" in line:
+                    if self.last_reply_secs is None:
+                        self.last_reply_secs = self._clock() - started
                     await handle(filt.push(line["t"]))
                 elif line.get("retry"):
                     await handle(filt.finish())
@@ -177,3 +185,5 @@ class BetoBrainLLMService(LLMService):
             await emit(TTSSpeakFrame(ERROR_TEXT))
         finally:
             self._emotions.append(emotion or "neutro")
+            if self.last_reply_secs is not None:
+                logger.info(f"[latency] resposta={self.last_reply_secs:.2f}s")

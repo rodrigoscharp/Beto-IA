@@ -13,6 +13,7 @@ from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnal
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -32,6 +33,7 @@ from .brain import BetoBrainLLMService, BrainClient
 from .config import Config
 from .gate import ConversationGate
 from .gate_processor import GateProcessor
+from .latency import latency_line
 from .stt import build_stt
 from .tts import VoiceStudioTTSService
 
@@ -80,11 +82,18 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
     )
 
     rtvi = RTVIProcessor()
+    latency_observer = UserBotLatencyObserver()
+
+    @latency_observer.event_handler("on_latency_breakdown")
+    async def on_latency_breakdown(_obs, b):
+        logger.info(latency_line(b.total_secs, b.user_turn_secs, [(m.processor, m.duration_secs) for m in b.ttfb], llm.last_acked))
+
     pipeline = Pipeline([transport.input(), stt, GateProcessor(gate), user_agg, llm, tts, transport.output(), assistant_agg])
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(enable_metrics=True, audio_in_sample_rate=16000),
         rtvi_processor=rtvi,
+        observers=[latency_observer],
         rtvi_observer_params=RTVIObserverParams(metrics_enabled=False),
         idle_timeout_secs=None,   # a sessão vive enquanto o navegador estiver conectado; silêncio longo é normal
     )

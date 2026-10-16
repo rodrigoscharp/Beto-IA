@@ -145,3 +145,12 @@ async def test_erro_http_fala_mensagem_de_erro():
     c = client_with(b"nao autorizado", status=401)
     frames = await collect(BetoBrainLLMService(c), [])
     assert [f.text for f in frames if isinstance(f, TTSSpeakFrame)] == [ERROR_TEXT]
+
+
+@pytest.mark.asyncio
+async def test_respond_mede_tempo_ate_o_primeiro_texto():
+    t = iter([10.0, 12.8])
+    llm = BetoBrainLLMService(client_with(ndjson({"t": "[emo:neutro] Oi."}, {"meta": {"mode": "chat"}})), clock=lambda: next(t))
+    await collect(llm, [{"role": "user", "content": "oi"}])
+    assert llm.last_reply_secs == pytest.approx(2.8)
+    assert llm.last_acked is False
