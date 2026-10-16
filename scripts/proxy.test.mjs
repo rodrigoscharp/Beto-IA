@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import { requestHeaders, responseHeaders, createHandler } from "./proxy/proxy.mjs";
+import { requestHeaders, responseHeaders, createHandler, upstreamAgent } from "./proxy/proxy.mjs";
 
 const O = { local: "https://localhost:3443", upstream: "https://betoia.vercel.app" };
 
@@ -62,6 +62,12 @@ test("resposta: todos os Set-Cookie chegam, sem o Domain da Vercel", () => {
     "beto_auth=1.abc; Path=/; HttpOnly; Secure; SameSite=lax",
     "sp_at=tok; Path=/; HttpOnly",
   ]);
+});
+
+test("conexão com a Vercel anuncia ALPN http/1.1 (sem ele a Vercel responde 403 de robô) e fica aberta", () => {
+  const a = upstreamAgent("https://betoia.vercel.app");
+  assert.deepEqual(a.options.ALPNProtocols, ["http/1.1"]);
+  assert.equal(a.keepAlive, true);
 });
 
 /* Ponta a ponta: upstream http falso e proxy http com o mesmo handler do serviço (o TLS fica de fora). */

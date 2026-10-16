@@ -54,12 +54,21 @@ export function responseHeaders(headers, { local, upstream }) {
   return out;
 }
 
+/** Conexões com o upstream, mantidas abertas para não pagar TCP + TLS a cada pedido. Em HTTPS anuncia ALPN
+    http/1.1: sem ALPN (o padrão do node:https) a Vercel trata a conexão como robô e responde 403 com o
+    "Security Checkpoint". */
+export function upstreamAgent(upstream) {
+  const opts = { keepAlive: true, maxSockets: 32, maxFreeSockets: 4, timeout: 60_000 };
+  return new URL(upstream).protocol === "https:"
+    ? new https.Agent({ ...opts, ALPNProtocols: ["http/1.1"] })
+    : new http.Agent(opts);
+}
+
 /** Handler de pedidos: repassa para o upstream e devolve a resposta em stream. */
 export function createHandler({ local, upstream }) {
   const up = new URL(upstream);
   const mod = up.protocol === "https:" ? https : http;
-  // Conexões abertas com a Vercel: sem pagar TCP + TLS a cada pedido.
-  const agent = new mod.Agent({ keepAlive: true, maxSockets: 32, maxFreeSockets: 4, timeout: 60_000 });
+  const agent = upstreamAgent(upstream);
 
   return (req, res) => {
     req.socket.setNoDelay(true);
