@@ -151,8 +151,8 @@ configurável e o tempo ocioso é curto.
   prioridade.
 - `voice/tests/test_tts.py`: `run_tts` com texto em cache não chama o VoiceStudio e entrega o PCM guardado; `prewarm`
   guarda o PCM de cada frase e não derruba nada se uma delas falhar.
-- A rota não tem teste hoje. A mudança nela é uma linha: a função `viaTools` do modo ndjson chama
-  `write({ ack: ackKind(sets) })` antes de `replyWithTools`. Ela é conferida no ensaio (passo 4 da ordem),
+- A rota não tem teste hoje. A mudança nela é uma linha: no modo ndjson, o ramo `if (plan.sets)` chama
+  `write({ ack: ackKind(plan.sets) })` antes de `viaTools`. O ramo de refazer com todas as ferramentas não chama. Ela é conferida no ensaio (passo 4 da ordem),
   olhando o log `[latency]` com `ack=sim` nos turnos com ferramenta e `ack=não` na conversa.
 - `voice/tests/test_brain.py`: `parse_line` com `ack`; `respond` emite emoção "pensativo" e
   `TTSSpeakFrame(append_to_context=False)` antes dos `LLMTextFrame` quando a frase está no cache; não emite nada
