@@ -91,10 +91,16 @@ export function prependSilence(wav: ArrayBuffer, secs: number): ArrayBuffer {
   return out;
 }
 
-/** Pede a fala ao VoiceStudio. Devolve o WAV, ou null se ele não respondeu (o motivo vai para o console). */
+/** Quanto esperar pela fala antes de desistir: folga para o modelo carregar (cerca de 9 s depois de reiniciar)
+    mais um tanto por caractere, porque a frase inteira é gerada antes de chegar. */
+export function speechTimeoutMs(text: string): number {
+  return 15000 + text.length * 40;
+}
+
+/** Pede a fala ao VoiceStudio. Devolve o WAV, ou null se ele não respondeu a tempo (o motivo vai para o console). */
 export async function fetchSpeech(
   text: string,
-  opts: { lead?: boolean; fetchImpl?: typeof fetch; cfg?: VoiceStudioCfg } = {},
+  opts: { lead?: boolean; fetchImpl?: typeof fetch; cfg?: VoiceStudioCfg; timeoutMs?: number } = {},
 ): Promise<Blob | null> {
   const cfg = opts.cfg ?? voiceStudioConfig();
   const doFetch = opts.fetchImpl ?? fetch;
@@ -103,6 +109,8 @@ export async function fetchSpeech(
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify(speechBody(text, cfg)),
+      // Travado sem responder, o Beto ficaria preso em "falando": desiste e mostra o texto.
+      signal:  AbortSignal.timeout(opts.timeoutMs ?? speechTimeoutMs(text)),
     });
     if (!res.ok) {
       console.warn(`[voz] VoiceStudio ${res.status}: ${(await res.text()).slice(0, 200)}`);

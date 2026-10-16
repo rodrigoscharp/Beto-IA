@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { voiceStudioConfig, speechBody, prependSilence, fetchSpeech, voiceStudioOnline, LEAD_SECS } from "../lib/voicestudio.ts";
+import { voiceStudioConfig, speechBody, prependSilence, fetchSpeech, voiceStudioOnline, speechTimeoutMs, LEAD_SECS } from "../lib/voicestudio.ts";
 
 /* WAV PCM de teste. `extraChunk`: um bloco LIST entre fmt e data, como alguns geradores gravam. */
 function makeWav({ rate = 24000, samples = [1, 2, 3, 4], extraChunk = false } = {}) {
@@ -95,4 +95,18 @@ test("voiceStudioOnline: só status ok conta", async () => {
   assert.equal(await voiceStudioOnline(okJson({ status: "starting" })), false);
   assert.equal(await voiceStudioOnline(async () => { throw new TypeError("Failed to fetch"); }), false);
   assert.equal(await voiceStudioOnline(async () => new Response("x", { status: 503 })), false);
+});
+
+test("fetchSpeech: VoiceStudio travado não prende o Beto (desiste no tempo limite)", async () => {
+  const hang = (_url, init) => new Promise((_resolve, reject) => {
+    init.signal.addEventListener("abort", () => reject(new DOMException("tempo esgotado", "TimeoutError")));
+  });
+  const t0 = Date.now();
+  assert.equal(await fetchSpeech("oi", { fetchImpl: hang, timeoutMs: 50 }), null);
+  assert.ok(Date.now() - t0 < 2000);
+});
+
+test("tempo limite cresce com o tamanho do texto", () => {
+  assert.equal(speechTimeoutMs("a".repeat(100)), 15000 + 100 * 40);
+  assert.ok(speechTimeoutMs("a".repeat(4096)) > speechTimeoutMs("oi"));
 });
