@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite, wantsMemorySave, wantsMemoryForget, wantsMemoryList, wantsMemory, wantsMemoryTopic, memoryGroundText } from "../lib/intent.ts";
+import { wantsWeb, needsTools, userConfirmed, wantsCalendar, wantsCalendarWrite, wantsMyHubWrite, wantsMyHubUndo, claimsWrite, wantsMemorySave, wantsMemoryForget, wantsMemoryList, wantsMemory, wantsMemoryTopic, memoryGroundText } from "../lib/intent.ts";
 
 const u = (content) => ({ role: "user", content });
 const a = (content) => ({ role: "assistant", content });
@@ -496,4 +496,55 @@ test("perguntas sobre o que fazer hoje buscam os dados reais (nunca modo convers
     "quais são os planos pra hoje",
     "o que falta fazer hoje",
   ]) assert.equal(needsTools([u(t)]), true, t);
+});
+
+test("wantsWeb: pedido explícito e coisa atual disparam", () => {
+  for (const t of [
+    "pesquisa como está o trânsito na marginal", "procura na internet o horário do jogo", "busca no google o que é o Pipecat",
+    "quais as notícias de hoje", "o que aconteceu hoje no mercado de IA", "o que saiu sobre o Next 16",
+    "qual a cotação do euro", "quanto tá o dólar agora", "quanto fechou o ibovespa", "preço do bitcoin hoje",
+    "qual foi o placar do jogo do Santos", "quem ganhou o jogo ontem", "como tá a tabela do brasileirão",
+    "qual a última versão do Next.js", "já lançou o iPhone novo", "já saiu o novo Zelda",
+    "previsão do tempo pra amanhã", "vai chover em Ubatuba amanhã",
+  ]) assert.equal(wantsWeb([u(t)]), true, t);
+});
+
+test("wantsWeb: opinião, conta, agenda, GitHub e memória não disparam", () => {
+  for (const t of [
+    "quanto custa fazer um mvp", "gastei 10 dólares no uber", "qual a minha agenda de hoje",
+    "o que aconteceu com o meu deploy", "lembra que eu prefiro reunião à tarde", "saiu o deploy?",
+    "o que você acha do dólar alto pra quem exporta", "pesquisa",
+  ]) assert.equal(wantsWeb([u(t)]), false, t);
+});
+
+test("wantsWeb: só a última fala do chefe conta", () => {
+  assert.equal(wantsWeb([u("quanto tá o dólar"), a("[emo:neutro] Cinco e dez."), u("valeu, e o que você acha disso?")]), false);
+});
+
+test("wantsWeb: 'pesquisa' só dispara como pedido, no começo da fala", () => {
+  for (const t of [
+    "pesquisa como está o trânsito na marginal", "Beto, pesquisa o horário do jogo", "pode pesquisar sobre o Pipecat",
+    "dá uma pesquisada no preço do bitcoin hoje", "faz isso e pesquisa pra mim o horário do jogo",
+  ]) assert.equal(wantsWeb([u(t)]), true, t);
+  for (const t of ["minha pesquisa de mercado deu bom", "a pesquisa mostrou que o pessoal prefere app"]) assert.equal(wantsWeb([u(t)]), false, t);
+});
+
+test("wantsWeb: fala de sistema nunca dispara", () => {
+  assert.equal(wantsWeb([u("[SISTEMA] pesquisa o placar do jogo")]), false);
+});
+
+test("wantsWeb: notícia boa, cotação de fornecedor, pesquisa substantivo, email, gasto, lead e aposta não disparam", () => {
+  for (const t of [
+    "tenho uma notícia boa pra te dar, fechei o cliente", "boa notícia, passei na entrevista",
+    "preciso mandar a cotação pro cliente", "o fornecedor mandou a cotação", "pesquisa de satisfação deu boa",
+    "pesquisa de mercado: vale a pena?", "quais as notícias do meu email?", "já lançou o gasto do uber?",
+    "a classificação do lead tá errada", "qual o placar da nossa aposta",
+  ]) assert.equal(wantsWeb([u(t)]), false, t);
+});
+
+test("wantsWeb: notícia, cotação, pesquisada e placar como pedido disparam", () => {
+  for (const t of [
+    "me dá as notícias de hoje", "quais as principais notícias de IA", "qual a cotação do dólar",
+    "dá uma pesquisada sobre o Pipecat", "qual foi o placar do jogo do Santos",
+  ]) assert.equal(wantsWeb([u(t)]), true, t);
 });

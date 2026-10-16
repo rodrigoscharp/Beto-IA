@@ -15,6 +15,7 @@ import { getGoogleToken } from "@/lib/google";
 import { buildSystemPrompt, detectNeedTools, type PromptMode } from "@/lib/prompt";
 import { planTurn, type ToolSets } from "@/lib/turnplan";
 import { ackKind } from "@/lib/ack";
+import { webAnswer, webGuide } from "@/lib/web";
 import { encodeLine, type WireLine, type WireMeta } from "@/lib/voicewire";
 
 type Memories = { content: string; category: string }[];
@@ -25,6 +26,9 @@ function logMetric(data: Record<string, unknown>) {
   console.log("[beto-metrics]", JSON.stringify({ evt: "chat", ...data }));
 }
 
+/** Pesquisa na web só com WEB_SEARCH=on: desligada por padrão. */
+const webSearchOn = () => process.env.WEB_SEARCH === "on";
+
 function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean; memory?: boolean; content?: boolean } = {}) {
   const t = getBrasiliaTime();
   return buildSystemPrompt(
@@ -32,6 +36,7 @@ function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | n
       memories,
       myhubBlock: myHubPromptBlock(myhub, t.date, { writeConfigured: myHubWriteConfigured(), tools: !!tools.myhub }),
       date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar, memory: !!tools.memory, content: !!tools.content,
+      web: webSearchOn(),   // com a pesquisa ligada, a HONESTIDADE explica a pesquisa automática
     },
     mode,
   );
@@ -240,12 +245,14 @@ export async function POST(req: NextRequest) {
     const t0 = Date.now();
     // `full`: o cliente já viu o modo conversa falhar (disse que fez sem ter ferramenta) e pede o prompt completo.
     const hubOn = myHubWriteConfigured();
-    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured(), content: myHubConfigured() }, forceFull === true);
+    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured(), content: myHubConfigured(), web: webSearchOn() }, forceFull === true);
     const mode: PromptMode = plan.mode;
     // O My Hub vai também na conversa simples (só leitura): é com ele que o Beto liga o papo à vida do chefe.
     // Tem cache de 2 min e, sem cache, espera no máximo 1,5 s (lib/myhub.ts).
     const [memories, myhub] = await Promise.all([getCachedMemories(), getMyHubContext()]);
     const ctxMs = Date.now() - t0;
+    // Turno de pesquisa: prompt completo mais o guia de fala da pesquisa (lib/web.ts).
+    const webSystem = () => promptFor("full", memories, myhub) + "\n\n" + webGuide();
 
     // Serviço local de voz: uma linha JSON por evento (lib/voicewire.ts). A decisão de rota é toda daqui: turno com
     // ferramentas vai pelo caminho completo (sem stream) e sai numa linha só; conversa sai em stream do modelo.
@@ -257,6 +264,7 @@ export async function POST(req: NextRequest) {
           const write = (l: WireLine) => { try { controller.enqueue(encoder.encode(encodeLine(l))); } catch { /* cliente foi embora */ } };
           let meta: WireMeta = { mode };
           let chars = 0, steps = 1, retried = false, tools: string[] = [];
+          let webModel: string | null | undefined;   // turno de pesquisa: o modelo de busca que respondeu (null = falhou)
           const viaTools = async (sets: ToolSets) => {
             const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
             meta = {
@@ -269,7 +277,16 @@ export async function POST(req: NextRequest) {
             return r.text;
           };
           try {
-            if (plan.sets) {
+            if (plan.web) {
+              // Pesquisa na web: a voz fala uma frase curta enquanto o modelo pesquisa; a resposta sai numa linha só.
+              write({ ack: "web" });
+              const r = await webAnswer(apiKey, webSystem(), messages);
+              meta = { mode: "full" };
+              webModel = r.model;
+              tools = [r.ok ? "browser_search" : "browser_search:erro"];
+              chars = r.text.length;
+              write({ t: r.text });
+            } else if (plan.sets) {
               // Antes do loop de ferramentas: o serviço de voz fala uma frase curta enquanto a ferramenta roda.
               write({ ack: ackKind(plan.sets) });
               const text = await viaTools(plan.sets);
@@ -302,13 +319,22 @@ export async function POST(req: NextRequest) {
             write({ t: "Desculpe, houve um erro na comunicação." });
           } finally {
             write({ meta });
-            logMetric({ mode: meta.mode, stream: "ndjson", model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars, retried, steps, tools });
+            logMetric({ mode: meta.mode, stream: "ndjson", model: webModel !== undefined ? webModel : workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars, retried, steps, tools });
             try { controller.close(); } catch { /* já fechado */ }
           }
         },
       });
       return new NextResponse(body, {
         headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    }
+
+    if (stream === true && plan.web) {
+      // Pesquisa na web: a resposta inteira vai num corpo de texto só (sem stream do modelo).
+      const r = await webAnswer(apiKey, webSystem(), messages);
+      logMetric({ mode: "full", stream: true, model: r.model, ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: r.text.length, retried: false, tools: [r.ok ? "browser_search" : "browser_search:erro"] });
+      return new NextResponse(r.text, {
+        headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "x-beto-mode": "full" },
       });
     }
 
@@ -357,6 +383,7 @@ export async function POST(req: NextRequest) {
     let acted = false;      // alguma ferramenta de ESCRITA executou com sucesso (agenda ou My Hub)
     let undoOut: UndoState | "clear" | null = null;
     let steps = 1;
+    let webModel: string | null | undefined;   // turno de pesquisa: o modelo de busca que respondeu (null = falhou)
     const everything: ToolSets = { calendar: true, myhub: hubOn, memory: memoryConfigured(), content: myHubConfigured() };
     const viaTools = async (sets: ToolSets) => {
       const r = await replyWithTools(req, apiKey, messages, memories, sets, parseUndo(undoRaw));
@@ -369,7 +396,14 @@ export async function POST(req: NextRequest) {
     };
     // Pedido de agenda ou de registro no My Hub: o prompt completo vai junto com as ferramentas do que foi pedido.
     // (`full` do cliente só força o prompt completo; não liga ferramentas por si.)
-    if (plan.sets) {
+    if (plan.web) {
+      // Pesquisa na web: modelo com busca embutida, prompt completo e guia de fala da pesquisa.
+      const r = await webAnswer(apiKey, webSystem(), messages);
+      reply = r.text;
+      usedMode = "full";
+      webModel = r.model;
+      tools = [r.ok ? "browser_search" : "browser_search:erro"];
+    } else if (plan.sets) {
       reply = await viaTools(plan.sets);
     } else {
       reply = await run(mode, myhub);
@@ -385,7 +419,7 @@ export async function POST(req: NextRequest) {
         reply = await viaTools(everything);
       }
     }
-    logMetric({ mode: usedMode, stream: false, model: workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
+    logMetric({ mode: usedMode, stream: false, model: webModel !== undefined ? webModel : workingModel(), ctx_ms: ctxMs, total_ms: Date.now() - t0, chars: reply.length, retried, steps, tools });
     return NextResponse.json({
       reply,
       ...(needsGoogleLogin ? { needsGoogleLogin: true } : {}),

@@ -2602,5 +2602,115 @@
    "memory_save",
    "memory_forget"
   ]
+ },
+ {
+  "id": "conv-web-01",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quanto custa fazer um app?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-web-02",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que você acha do dólar alto pra quem exporta?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-web-03",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me explica como funciona a bolsa de valores"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-web-04",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "por que o bitcoin oscila tanto?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "conv-web-05",
+  "area": "conversa",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "vale a pena estudar Rust em vez de Go?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
  }
 ]

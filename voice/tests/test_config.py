@@ -71,7 +71,7 @@ def test_padroes_novos_do_turno_e_do_ack(tmp_path):
     assert cfg.turn.idle_close_secs == 60
     assert "deixa eu pensar" in cfg.turn.hold_phrases
     assert cfg.ack.phrases()["agenda"][0] == "Deixa eu ver a agenda."
-    assert set(cfg.ack.phrases()) == {"conteudo", "agenda", "myhub", "memoria", "geral"}
+    assert set(cfg.ack.phrases()) == {"conteudo", "agenda", "myhub", "memoria", "geral", "web"}
     assert all(len(f.split()) <= 6 and "chefe" not in f.lower() for f in cfg.ack.all())
 
 
@@ -109,3 +109,11 @@ def test_origem_do_app_e_a_da_producao():
     plist = (DEFAULT_PATH.parent.parent / "scripts" / "voicestudio" / "com.beto.voicestudio.plist").read_text()
     assert "https://betoia.vercel.app" in plist
     assert "beto-ia.vercel.app" not in plist
+
+
+def test_ack_web_padrao_e_validacao(tmp_path):
+    cfg = load_config(write_toml(tmp_path), env={})
+    assert cfg.ack.phrases()["web"] == ["Deixa eu pesquisar.", "Vou dar uma olhada."]
+    assert "Deixa eu pesquisar." in cfg.ack.all()
+    with pytest.raises(ValueError, match=r"\[ack\]\.web"):
+        load_config(write_toml(tmp_path, ack="web = []"), env={})

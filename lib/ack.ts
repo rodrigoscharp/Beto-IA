@@ -4,7 +4,7 @@
 import type { ChatMsg } from "./intent";
 import { planTurn, type ToolSets } from "./turnplan";
 
-export type AckKind = "conteudo" | "agenda" | "myhub" | "memoria" | "geral";
+export type AckKind = "conteudo" | "agenda" | "myhub" | "memoria" | "geral" | "web";
 
 /** Escolhe pelo que vai rodar, na ordem de prioridade: conteúdo, agenda, My Hub, memória. */
 export function ackKind(sets: ToolSets): AckKind {
@@ -22,6 +22,7 @@ export const ACK_PHRASES: Record<AckKind, readonly string[]> = {
   myhub:    ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."],
   memoria:  ["Deixa eu ver o que guardei.", "Um segundo."],
   geral:    ["Um segundo.", "Deixa eu ver.", "Já vejo isso."],
+  web:      ["Deixa eu pesquisar.", "Vou dar uma olhada."],
 };
 
 /** Todas as frases, sem repetição: a lista que o navegador pré-gera. */
