@@ -52,3 +52,21 @@ test("conteúdo (vídeo, episódio, roteiro): modo completo com a ferramenta do 
   assert.equal(planTurn([u("me explica o episódio 2")], ON).sets?.content ?? false, false, "sem My Hub configurado não liga");
   assert.equal(planTurn([u("como você está hoje de manhã")], C).sets, null);
 });
+
+const WEB = { ...ON, web: true };
+
+test("pesquisa: modo completo, sem conjuntos, web ligado", () => {
+  assert.deepEqual(planTurn([u("quanto tá o dólar agora")], WEB), { mode: "full", sets: null, web: true });
+});
+
+test("pesquisa junto de agenda vira só agenda", () => {
+  const p = planTurn([u("pesquisa a previsão do tempo e marca reunião amanhã às 10")], WEB);
+  assert.equal(p.web, undefined);
+  assert.equal(p.sets?.calendar, true);
+});
+
+test("web desligado ou ausente nunca pesquisa; conversa comum não muda", () => {
+  assert.equal(planTurn([u("quanto tá o dólar agora")], ON).web, undefined);
+  assert.equal(planTurn([u("quanto tá o dólar agora")], { ...ON, web: false }).web, undefined);
+  assert.deepEqual(planTurn([u("como você está hoje de manhã")], WEB), { mode: "chat", sets: null });
+});
