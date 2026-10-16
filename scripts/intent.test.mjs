@@ -520,3 +520,15 @@ test("wantsWeb: opinião, conta, agenda, GitHub e memória não disparam", () =>
 test("wantsWeb: só a última fala do chefe conta", () => {
   assert.equal(wantsWeb([u("quanto tá o dólar"), a("[emo:neutro] Cinco e dez."), u("valeu, e o que você acha disso?")]), false);
 });
+
+test("wantsWeb: 'pesquisa' só dispara como pedido, no começo da fala", () => {
+  for (const t of [
+    "pesquisa como está o trânsito na marginal", "Beto, pesquisa o horário do jogo", "pode pesquisar sobre o Pipecat",
+    "dá uma pesquisada no preço do bitcoin hoje", "faz isso e pesquisa pra mim o horário do jogo",
+  ]) assert.equal(wantsWeb([u(t)]), true, t);
+  for (const t of ["minha pesquisa de mercado deu bom", "a pesquisa mostrou que o pessoal prefere app"]) assert.equal(wantsWeb([u(t)]), false, t);
+});
+
+test("wantsWeb: fala de sistema nunca dispara", () => {
+  assert.equal(wantsWeb([u("[SISTEMA] pesquisa o placar do jogo")]), false);
+});

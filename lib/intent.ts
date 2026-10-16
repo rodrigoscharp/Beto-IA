@@ -320,9 +320,10 @@ export function wantsMemory(messages: ChatMsg[]): boolean {
 
 /* ── Pesquisa na web ─────────────────────────────────────────────────────── */
 
-/* Pedido explícito de pesquisa, ou coisa que muda com o tempo (notícia, cotação, placar, versão, tempo). Conservadora:
+/* Pedido explícito de pesquisa ("pesquisa" só conta no começo da fala ou como "pesquisa pra mim"/"pesquisar sobre": "minha
+   pesquisa de mercado deu bom" é o substantivo), ou coisa que muda com o tempo (notícia, cotação, placar, versão, tempo). Conservadora:
    "quanto custa fazer um mvp" (opinião), "o que aconteceu com o meu deploy" (GitHub) e "saiu o deploy?" não entram. */
-const WEB_EXPLICIT = /\b(?:pesquisa|pesquise|pesquisar)\b|\b(?:procura|busca|ve|olha) na (?:internet|web)\b|\bbusca no google\b|\bda um google\b/;
+const WEB_EXPLICIT = /^(?:(?:beto|pode|da uma|faz uma)[, ]+)*(?:pesquisa|pesquise|pesquisar)\b|\bpesquis(?:a|e|ar) pra mim\b|\bpesquisar sobre\b|\b(?:procura|busca|ve|olha) na (?:internet|web)\b|\bbusca no google\b|\bda um google\b/;
 const WEB_NEWS = /\b(?:noticias?|manchetes?)\b|\bo que aconteceu (?:hoje|ontem|essa semana) (?:no|na|com)\b|\bo que saiu sobre\b|\balguma novidade sobre\b/;
 const WEB_MARKET = /\bcotacao\b|\bquanto (?:ta|esta|ficou|fechou) o (?:dolar|euro|bitcoin|ibovespa|real)\b|\bpreco (?:do|da) (?:bitcoin|acao|acoes|gasolina)\b|\bbolsa hoje\b/;
 const WEB_SPORT = /\bplacar\b|\bquanto (?:foi|ficou|ta|esta) o jogo\b|\bresultado do jogo\b|\bquem ganhou o jogo\b|\btabela do brasileirao\b|\bclassificacao do\b/;
