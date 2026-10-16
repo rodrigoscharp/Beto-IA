@@ -177,7 +177,7 @@ Copie `.env.local.example` para `.env.local` e preencha:
 | Variável | Descrição | Obrigatória |
 |----------|-----------|:-----------:|
 | `GROQ_API_KEY` | Chave da API do Groq (LLM) | ✅ |
-| `NEXT_PUBLIC_VOICESTUDIO_URL` | Onde o navegador pede a voz (padrão: `http://localhost:3900`) | — |
+| `NEXT_PUBLIC_VOICESTUDIO_URL` | Onde o navegador pede a voz (padrão: `https://localhost:3900`) | — |
 | `NEXT_PUBLIC_VOICESTUDIO_VOICE` | Perfil de voz no VoiceStudio (padrão: `Beto`) | — |
 | `NEXT_PUBLIC_VOICESTUDIO_STEPS` | Passos de geração: 8 rápido, 16 melhor e mais lento (padrão: `8`) | — |
 | `SUPABASE_URL` | URL do seu projeto Supabase | ✅ |
@@ -222,7 +222,7 @@ Cada push para `main` faz deploy automático.
 
 ## Voz do Beto (VoiceStudio no Mac)
 
-A voz sai do [VoiceStudio](https://github.com/debpalash/VoiceStudio), que roda no Mac em `http://localhost:3900`. Quem
+A voz sai do [VoiceStudio](https://github.com/debpalash/VoiceStudio), que roda no Mac em `https://localhost:3900` (certificado local do mkcert: `brew install mkcert && mkcert -install` antes do `scripts/voicestudio/install.sh`). Quem
 pede cada frase é o navegador (a Vercel não alcança o localhost do Mac). Para instalar:
 
 ```bash

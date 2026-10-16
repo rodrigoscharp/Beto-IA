@@ -1,4 +1,4 @@
-"""Voz do Beto pelo VoiceStudio no Mac (http://127.0.0.1:3900), a mesma do app.
+"""Voz do Beto pelo VoiceStudio no Mac (https://localhost:3900, certificado do mkcert), a mesma do app.
 
 O VoiceStudio gera a frase inteira antes de responder (cerca de 2 a 3 s no modo rápido); o áudio volta como PCM
 cru (24 kHz, 16 bits, mono) e vira quadros de áudio do Pipecat.
@@ -7,6 +7,7 @@ cru (24 kHz, 16 bits, mono) e vira quadros de áudio do Pipecat.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
+from pathlib import Path
 
 import httpx
 from loguru import logger
@@ -46,9 +47,22 @@ def speech_payload(text: str, cfg: TtsCfg) -> dict:
     }
 
 
-def voicestudio_online(url: str, client: httpx.Client | None = None) -> bool:
+MKCERT_CA = Path.home() / "Library" / "Application Support" / "mkcert" / "rootCA.pem"
+
+
+def tls_verify(url: str, ca_file: str = "", mkcert_ca: Path = MKCERT_CA) -> str | bool:
+    """Como conferir o certificado do VoiceStudio: a autoridade da config, senão a do mkcert (o certificado do
+    localhost é dele e o httpx não lê o Keychain do macOS), senão a lista padrão."""
+    if ca_file:
+        return str(Path(ca_file).expanduser())
+    if url.startswith("https://") and mkcert_ca.is_file():
+        return str(mkcert_ca)
+    return True
+
+
+def voicestudio_online(url: str, client: httpx.Client | None = None, ca_file: str = "") -> bool:
     """O VoiceStudio está no ar e com o modelo carregado?"""
-    c = client or httpx.Client(timeout=3)
+    c = client or httpx.Client(timeout=3, verify=tls_verify(url, ca_file))
     try:
         r = c.get(f"{url}/health")
         return r.status_code == 200 and r.json().get("status") == "ok"
@@ -75,7 +89,8 @@ class VoiceStudioTTSService(TTSService):
             **kwargs,
         )
         self._cfg = cfg
-        self._client = client or httpx.AsyncClient(base_url=cfg.url, timeout=cfg.timeout_secs)
+        self._client = client or httpx.AsyncClient(
+            base_url=cfg.url, timeout=cfg.timeout_secs, verify=tls_verify(cfg.url, cfg.ca_file))
 
     def can_generate_metrics(self) -> bool:
         return True

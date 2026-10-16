@@ -38,7 +38,7 @@ function samples(v) {
 const okJson = (obj) => async () => new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } });
 
 test("config: padrões e env", () => {
-  assert.deepEqual(voiceStudioConfig({}), { url: "http://localhost:3900", voice: "Beto", steps: 8, speed: 1 });
+  assert.deepEqual(voiceStudioConfig({}), { url: "https://localhost:3900", voice: "Beto", steps: 8, speed: 1 });
   assert.equal(voiceStudioConfig({ NEXT_PUBLIC_VOICESTUDIO_URL: "http://x:1/" }).url, "http://x:1");
   assert.equal(voiceStudioConfig({ NEXT_PUBLIC_VOICESTUDIO_STEPS: "abc" }).steps, 8);
   assert.equal(voiceStudioConfig({ NEXT_PUBLIC_VOICESTUDIO_STEPS: "16", NEXT_PUBLIC_VOICESTUDIO_SPEED: "1.1" }).steps, 16);
@@ -81,7 +81,7 @@ test("fetchSpeech: pede o endpoint certo e lead acrescenta 0,4 s ao áudio", asy
   let seen;
   const fetchImpl = async (url, init) => { seen = { url, init }; return new Response(wav.slice(0), { status: 200 }); };
   const plain = await fetchSpeech("oi", { fetchImpl });
-  assert.equal(seen.url, "http://localhost:3900/v1/audio/speech");
+  assert.equal(seen.url, "https://localhost:3900/v1/audio/speech");
   assert.equal(seen.init.method, "POST");
   assert.equal(JSON.parse(seen.init.body).voice, "Beto");
   assert.equal(plain.size, wav.byteLength);
@@ -109,4 +109,36 @@ test("fetchSpeech: VoiceStudio travado não prende o Beto (desiste no tempo limi
 test("tempo limite cresce com o tamanho do texto", () => {
   assert.equal(speechTimeoutMs("a".repeat(100)), 15000 + 100 * 40);
   assert.ok(speechTimeoutMs("a".repeat(4096)) > speechTimeoutMs("oi"));
+});
+
+test("fetchSpeech: fila cheia (429) espera e tenta de novo em vez de perder a frase", async () => {
+  const wav = makeWav();
+  let calls = 0;
+  const waits = [];
+  const fetchImpl = async () => (++calls < 3 ? new Response("ocupado", { status: 429, headers: { "Retry-After": "30" } }) : new Response(wav.slice(0), { status: 200 }));
+  const blob = await fetchSpeech("oi", { fetchImpl, sleep: async (ms) => { waits.push(ms); } });
+  assert.equal(calls, 3);
+  assert.equal(blob.size, wav.byteLength);
+  assert.deepEqual(waits, [700, 700]);   // espera curta e fixa: a frase da frente leva uns 2 s, não os 30 s do Retry-After
+});
+
+test("fetchSpeech: 503 com X-OmniVoice-Retryable também tenta de novo; sem o cabeçalho desiste", async () => {
+  const wav = makeWav();
+  let calls = 0;
+  const retryable = async () => (++calls < 2 ? new Response("carregando", { status: 503, headers: { "X-OmniVoice-Retryable": "true" } }) : new Response(wav.slice(0), { status: 200 }));
+  assert.ok(await fetchSpeech("oi", { fetchImpl: retryable, sleep: async () => {} }));
+  assert.equal(calls, 2);
+  let plainCalls = 0;
+  const plain = async () => { plainCalls++; return new Response("quebrado", { status: 503 }); };
+  assert.equal(await fetchSpeech("oi", { fetchImpl: plain, sleep: async () => {} }), null);
+  assert.equal(plainCalls, 1);
+});
+
+test("fetchSpeech: fila sempre cheia desiste no tempo limite da frase", async () => {
+  let calls = 0;
+  const busy = async () => { calls++; return new Response("ocupado", { status: 429 }); };
+  const t0 = Date.now();
+  assert.equal(await fetchSpeech("oi", { fetchImpl: busy, timeoutMs: 120, sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(ms, 30))) }), null);
+  assert.ok(Date.now() - t0 < 2000);
+  assert.ok(calls >= 2);
 });

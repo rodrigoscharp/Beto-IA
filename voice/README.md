@@ -15,7 +15,7 @@ uv sync
 uv run beto-voice               # http://127.0.0.1:7860 — a primeira vez baixa o modelo (~1,6 GB)
 ```
 
-- O VoiceStudio precisa estar no ar em `http://127.0.0.1:3900` com o perfil "Beto" (ver `scripts/voicestudio/` na raiz).
+- O VoiceStudio precisa estar no ar em `https://localhost:3900` com o perfil "Beto" (ver `scripts/voicestudio/` na raiz).
 - `VOICE_SERVICE_TOKEN` tem de ser o mesmo no app (variável na Vercel, ou `.env.local` com `npm run dev`).
 - `BRAIN_URL` aponta para o cérebro: `http://localhost:3000` em desenvolvimento, `https://<app>.vercel.app` em produção.
 - No app, `NEXT_PUBLIC_VOICE_URL` (padrão `http://localhost:7860`) diz onde procurar o serviço. Com ele no ar, o

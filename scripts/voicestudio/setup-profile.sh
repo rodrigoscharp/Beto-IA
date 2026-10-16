@@ -2,10 +2,13 @@
 # Cria (ou recria) no VoiceStudio o perfil de voz "Beto", a partir da referência versionada em voice/assets.
 # Pode rodar quantas vezes quiser: apaga antes qualquer perfil "Beto" (ou o "Beto curto" dos testes), porque dois
 # perfis com o mesmo nome fazem a API responder 409 e o Beto ficaria mudo.
-# Uso: scripts/voicestudio/setup-profile.sh   (VOICESTUDIO_URL troca o endereço; padrão http://localhost:3900)
+# Uso: scripts/voicestudio/setup-profile.sh   (VOICESTUDIO_URL troca o endereço; padrão https://localhost:3900)
 set -euo pipefail
 
-URL="${VOICESTUDIO_URL:-http://localhost:3900}"
+URL="${VOICESTUDIO_URL:-https://localhost:3900}"
+# O certificado do VoiceStudio é do mkcert: o curl do macOS não lê o Keychain, então recebe a autoridade local.
+CA="$(mkcert -CAROOT 2>/dev/null)/rootCA.pem"
+[ -f "$CA" ] && export CURL_CA_BUNDLE="$CA"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 REF="$ROOT/voice/assets/beto-ref.wav"
 REF_TEXT="Hoje você tem três tarefas no MyHub e uma reunião às dez."

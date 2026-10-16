@@ -55,7 +55,7 @@ com o serviço `voice/` em `localhost:7860`.
 - Um LaunchAgent (`~/Library/LaunchAgents/…voicestudio.plist`) com `RunAtLoad` e `KeepAlive` sobe o backend do
   VoiceStudio a partir de `~/Dev/VoiceStudio`. O modelo do plist e o script que o instala ficam no repositório do
   Beto (em `scripts/voicestudio/`). Os logs vão para um arquivo conhecido.
-- O ambiente do serviço define `OMNIVOICE_ALLOWED_ORIGINS` com as origens do Beto (`https://beto-ia.vercel.app`
+- O ambiente do serviço define `OMNIVOICE_ALLOWED_ORIGINS` com as origens do Beto (`https://betoia.vercel.app`
   e `http://localhost:3000`). Sem isso, o CORS e o guarda de navegador do VoiceStudio recusam o pedido.
 - No primeiro uso, o Chrome pode pedir permissão de acesso à rede local. O Rodrigo aceita uma vez.
 

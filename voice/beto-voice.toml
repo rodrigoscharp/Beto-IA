@@ -65,7 +65,7 @@ geral = ["Um segundo.", "Deixa eu ver.", "Já vejo isso."]
 
 [tts]
 # Voz pelo VoiceStudio no Mac (scripts/voicestudio/ o deixa sempre ligado). Env VOICESTUDIO_URL sobrescreve a url.
-url = "http://127.0.0.1:3900"
+url = "https://localhost:3900"
 # Perfil de voz criado por scripts/voicestudio/setup-profile.sh: a mesma voz do app.
 voice = "Beto"
 # Passos de geração: 8 = modo rápido (2 a 3 s por frase); 16 soa um pouco melhor e leva o dobro.
@@ -75,4 +75,4 @@ speed = 1.0
 [server]
 host = "127.0.0.1"
 port = 7860
-cors_origins = ["http://localhost:3000", "https://beto-ia.vercel.app"]
+cors_origins = ["http://localhost:3000", "https://betoia.vercel.app"]

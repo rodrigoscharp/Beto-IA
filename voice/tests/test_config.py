@@ -14,7 +14,7 @@ def test_le_o_toml_do_repositorio_com_os_padroes():
     assert "Muno" in cfg.stt.vocabulary
     assert cfg.stt.engine == "mlx"
     assert cfg.brain.token == "tok"
-    assert (cfg.tts.url, cfg.tts.voice, cfg.tts.num_step) == ("http://127.0.0.1:3900", "Beto", 8)
+    assert (cfg.tts.url, cfg.tts.voice, cfg.tts.num_step) == ("https://localhost:3900", "Beto", 8)
     assert cfg.server.port == 7860
 
 
@@ -99,3 +99,13 @@ def test_ack_do_toml_substitui_so_a_chave_informada(tmp_path):
 def test_toml_do_repo_nao_encerra_com_beleza_nem_fechou():
     cfg = load_config(env={})
     assert "beleza" not in cfg.turn.end_phrases and "fechou" not in cfg.turn.end_phrases
+
+
+def test_origem_do_app_e_a_da_producao():
+    # O app em produção é betoia.vercel.app (sem hífen); beto-ia.vercel.app é o site de outra pessoa.
+    # Com a origem errada, o navegador recusa a voz e o Beto fica mudo.
+    cfg = load_config(env={})
+    assert "https://betoia.vercel.app" in cfg.server.cors_origins
+    plist = (DEFAULT_PATH.parent.parent / "scripts" / "voicestudio" / "com.beto.voicestudio.plist").read_text()
+    assert "https://betoia.vercel.app" in plist
+    assert "beto-ia.vercel.app" not in plist
