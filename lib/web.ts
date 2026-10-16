@@ -1,4 +1,4 @@
-import { groqCompleteOn } from "./groq";
+import Groq from "groq-sdk";
 import type { ChatMsg } from "./intent";
 
 /* Pesquisa na web: o browser_search da Groq só existe no gpt-oss, então a lista é própria (não a PREFERRED do chat).
@@ -32,7 +32,16 @@ export function webGuide(): string {
   ].join(" ");
 }
 
-const defaultCall: CallFn = (apiKey, model, params) => groqCompleteOn(apiKey, model, params as never);
+/* Cliente próprio: o do groq.ts corta em 12 s, e uma busca (pesquisar + ler páginas) leva mais que isso.
+   Sem retries do SDK: se um modelo engasgar, passa para o próximo na hora. */
+export const WEB_TIMEOUT_MS = 30_000;
+
+const defaultCall: CallFn = async (apiKey, model, params) => {
+  const groq = new Groq({ apiKey, maxRetries: 0, timeout: WEB_TIMEOUT_MS, baseURL: process.env.GROQ_BASE_URL || undefined });
+  const res = await groq.chat.completions.create({ ...(params as object), model, stream: false } as never) as Groq.Chat.ChatCompletion;
+  const content = (res.choices[0]?.message?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  return { content };
+};
 
 export async function webAnswer(apiKey: string, system: string, messages: ChatMsg[], call: CallFn = defaultCall): Promise<WebResult> {
   const params = {
