@@ -21,3 +21,10 @@ test("linha vazia, inválida ou de outro formato devolve null", () => {
   assert.equal(parseLine('{"x":1}'), null);
   assert.equal(parseLine('{"meta":{"mode":"outro"}}'), null);
 });
+
+test("ack: ida e volta, e só tipos conhecidos", () => {
+  assert.deepEqual(parseLine(encodeLine({ ack: "agenda" })), { ack: "agenda" });
+  assert.equal(parseLine('{"ack":""}'), null);
+  assert.equal(parseLine('{"ack":3}'), null);
+  assert.equal(parseLine('{"ack":"outro"}'), null);
+});
