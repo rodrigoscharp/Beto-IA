@@ -15,6 +15,7 @@ import { useVoiceLink } from "@/components/useVoiceLink";
 import type { ServerMsg } from "@/lib/voicelink";
 import { resolveEmailRef, type ListedEmail } from "@/lib/gmail-text";
 import { afterWake, MAX_UTTERANCE_MS, silenceMs } from "@/lib/endpoint";
+import { ACK_ALL, ackPhrase, turnAck, type AckKind } from "@/lib/ack";
 
 /* Mascote 3D (three.js): só no cliente, fora do bundle do servidor. */
 const BetoGhost = dynamic(() => import("@/components/mascot/BetoGhost"), { ssr: false });
@@ -216,6 +217,7 @@ export default function JarvisPage() {
   const wakeFails      = useRef(0);
   const wakeLock       = useRef<{ release(): Promise<void> } | null>(null);
   const cachedAudio    = useRef(new Map<string, string>());   // frase pré-gerada -> blob URL
+  const ackCount       = useRef(0);                                               // rodízio das frases curtas de espera
   const musicPlaying   = useRef(false);
   const undoRef        = useRef<{ path: string | null; resumo: string; ts: number } | null>(null);   // último registro desfazível do My Hub (o servidor devolve; o navegador reenvia)
   const lastEmails     = useRef<ListedEmail[]>([]);
@@ -467,7 +469,8 @@ export default function JarvisPage() {
       await Promise.all(OLD_GREETING_CACHES.map(name => caches.delete(name)));
       const cache = await caches.open(GREETING_CACHE);
       let generated = false;
-      for (const text of GREETING_PHRASES) {
+      // Saudações primeiro; depois as frases curtas de espera ("Deixa eu ver a agenda."), que entram no cache só uma vez.
+      for (const text of [...GREETING_PHRASES, ...ACK_ALL]) {
         const key = `/__filler/${encodeURIComponent(text)}`;   // prefixo antigo mantido: é a chave do cache já gravado nos aparelhos
         let res = await cache.match(key);
         if (!res) {
@@ -564,6 +567,40 @@ export default function JarvisPage() {
     if (!blob) refreshVoice(true);
     else if (voiceOnlineRef.current === false) refreshVoice(true);   // voltou: tira o aviso
     return blob;
+  }
+
+  /** Frase curta pré-gerada ("Deixa eu ver a agenda.") enquanto o servidor roda a ferramenta, que leva alguns
+      segundos sem stream. Só toca se já está no cache: gerar na hora chegaria junto com a resposta. Resolve quando
+      ela termina (ou não tocou); true = alguém calou o Beto no meio (toque no mascote), e o turno é abandonado. */
+  function playAck(kind: AckKind | null): Promise<boolean> {
+    if (!kind || !audioUnlocked.current) return Promise.resolve(false);
+    const text = ackPhrase(kind, ackCount.current++);
+    const url  = cachedAudio.current.get(text);
+    if (!url) return Promise.resolve(false);
+    stopPlayback();
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    setMode("speaking");
+    setTalking(false);
+    setCaption(text);
+    return new Promise<boolean>((resolve) => {
+      let over = false;
+      const end = () => {
+        if (over) return;
+        over = true;
+        clearTimeout(cap);
+        setTalking(false);
+        const cut = audioRef.current !== audio;
+        if (!cut) { audioRef.current = null; setCaption(""); setMode("thinking"); }   // volta a "pensando" até a resposta
+        resolve(cut);
+      };
+      const cap = setTimeout(() => { audio.pause(); }, 6000);   // áudio travado não segura a resposta
+      audio.onplaying = () => { setTalking(true); firstSound(); };
+      audio.onended = end;
+      audio.onerror = end;
+      audio.onpause = end;
+      audio.play().catch(end);
+    });
   }
 
   /** Toca uma frase pré-gerada na hora. Devolve false se ainda não está no cache (aí cai no TTS normal). */
@@ -1064,9 +1101,12 @@ export default function JarvisPage() {
       }
 
       let rawReply: string;
+      let ackDone: Promise<boolean> = Promise.resolve(false);
       if (held !== null) {
         rawReply = held;
       } else {
+        // Caminho com ferramenta: fala "Deixa eu ver a agenda." na hora em vez de ficar mudo até a resposta.
+        if (!alreadySpoken) ackDone = playAck(turnAck(msgs.slice(-20)) ?? (forceFull ? "geral" : null));
         const res  = await fetch("/api/chat", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
@@ -1082,6 +1122,8 @@ export default function JarvisPage() {
         if (data.undoCleared) undoRef.current = null;          // desfez: não há mais o que desfazer
       }
       if (turn !== turnSeq.current) return;   // outro turno começou enquanto esperava
+      if (await ackDone) return;              // calaram o Beto durante a frase de espera: não responde por cima
+      if (turn !== turnSeq.current) return;
 
       // A tag [emo:X] vira o humor do rosto e sai do texto: não é falada, não vai para a legenda nem para as tags de ação.
       const emo = parseEmotion(rawReply);
