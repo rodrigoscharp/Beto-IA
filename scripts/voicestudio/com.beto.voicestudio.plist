@@ -29,7 +29,7 @@
   <dict>
     <!-- Origens que podem pedir voz pelo navegador: as padrão do VoiceStudio + o Beto (Vercel e npm run dev). -->
     <key>OMNIVOICE_ALLOWED_ORIGINS</key>
-    <string>http://localhost:3900,http://127.0.0.1:3900,https://beto-ia.vercel.app,http://localhost:3000</string>
+    <string>http://localhost:3900,http://127.0.0.1:3900,https://betoia.vercel.app,http://localhost:3000</string>
     <key>PATH</key>
     <string>__HOME__/bin:__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>

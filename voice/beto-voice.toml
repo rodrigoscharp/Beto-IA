@@ -75,4 +75,4 @@ speed = 1.0
 [server]
 host = "127.0.0.1"
 port = 7860
-cors_origins = ["http://localhost:3000", "https://beto-ia.vercel.app"]
+cors_origins = ["http://localhost:3000", "https://betoia.vercel.app"]

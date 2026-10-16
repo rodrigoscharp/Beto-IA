@@ -14,7 +14,7 @@
 
 - Endpoint: `POST {url}/v1/audio/speech` com `{ model: "omnivoice", input, voice: "Beto", language: "pt", num_step: 8, speed }`.
 - URL padrão `http://localhost:3900`; voz padrão `Beto`; passos padrão `8`; `input` com no máximo 4096 caracteres (limite da API).
-- Origens liberadas no VoiceStudio: `https://beto-ia.vercel.app`, `http://localhost:3000` (via `OMNIVOICE_ALLOWED_ORIGINS`, somadas às padrão `http://localhost:3900,http://127.0.0.1:3900`).
+- Origens liberadas no VoiceStudio: `https://betoia.vercel.app`, `http://localhost:3000` (via `OMNIVOICE_ALLOWED_ORIGINS`, somadas às padrão `http://localhost:3900,http://127.0.0.1:3900`).
 - Perfil "Beto": referência `voice/assets/beto-ref.wav` (2,85 s), texto "Hoje você tem três tarefas no MyHub e uma reunião às dez.", instruct `male, young adult, moderate pitch`, `language=pt`, `kind=clone`. Nome único.
 - Silêncio de abertura (`lead`): 0,4 s, só na primeira frase de uma resposta e nas saudações.
 - Nenhuma voz reserva: falhou, o texto fica na tela `min(8000, 1500 + 55 × caracteres)` ms e a conversa segue.
@@ -47,8 +47,8 @@
 - [ ] **Step 3:** `setup-profile.sh`: lista `GET /profiles`, apaga (`DELETE /profiles/{id}`) todo perfil chamado `Beto` ou `Beto curto`, cria o perfil com os valores das Global Constraints e imprime o id.
 - [ ] **Step 4:** Parar o backend manual desta sessão, rodar `scripts/voicestudio/install.sh` e depois `scripts/voicestudio/setup-profile.sh`.
 Expected: `/health` ok; `GET /profiles` com exatamente um `Beto`.
-- [ ] **Step 5:** Checar o CORS: `curl -s -i -X OPTIONS http://localhost:3900/v1/audio/speech -H 'Origin: https://beto-ia.vercel.app' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type'`.
-Expected: `access-control-allow-origin: https://beto-ia.vercel.app`. Depois um `POST` com esse `Origin` e o corpo das Global Constraints devolve 200 `audio/wav`.
+- [ ] **Step 5:** Checar o CORS: `curl -s -i -X OPTIONS http://localhost:3900/v1/audio/speech -H 'Origin: https://betoia.vercel.app' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: content-type'`.
+Expected: `access-control-allow-origin: https://betoia.vercel.app`. Depois um `POST` com esse `Origin` e o corpo das Global Constraints devolve 200 `audio/wav`.
 - [ ] **Step 6:** Commit `feat(voz): VoiceStudio sempre ligado e perfil Beto`.
 
 ### Task 2: Cliente do VoiceStudio (`lib/voicestudio.ts`)
