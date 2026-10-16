@@ -94,7 +94,7 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
     async def on_latency_breakdown(_obs, b):
         logger.info(latency_line(b.total_secs, b.user_turn_secs, [(m.processor, m.duration_secs) for m in b.ttfb], llm.last_acked))
 
-    pipeline = Pipeline([transport.input(), stt, GateProcessor(gate), user_agg, llm, tts, transport.output(), assistant_agg])
+    pipeline = Pipeline([transport.input(), stt, GateProcessor(gate, pending=lambda: llm.unanswered), user_agg, llm, tts, transport.output(), assistant_agg])
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(enable_metrics=True, audio_in_sample_rate=16000),

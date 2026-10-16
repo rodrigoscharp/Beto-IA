@@ -25,10 +25,18 @@ from .gate import ConversationGate
 
 
 class GateProcessor(FrameProcessor):
-    def __init__(self, gate: ConversationGate, *, clock: Callable[[], float] = time.monotonic, **kwargs):
+    def __init__(
+        self,
+        gate: ConversationGate,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        pending: Callable[[], bool] = lambda: False,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self._gate = gate
         self._clock = clock
+        self._pending = pending   # a pergunta anterior ficou sem resposta? (o cérebro foi interrompido)
 
     @property
     def gate(self) -> ConversationGate:
@@ -39,7 +47,7 @@ class GateProcessor(FrameProcessor):
         now = self._clock()
 
         if isinstance(frame, TranscriptionFrame):
-            d = self._gate.on_transcript(frame.text, now)
+            d = self._gate.on_transcript(frame.text, now, pending=self._pending())
             if d.kind == "forward":
                 frame.text = d.text
                 await self.push_frame(frame, direction)

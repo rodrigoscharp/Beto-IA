@@ -8,7 +8,9 @@ Modo contínuo: depois que o Beto responde, a janela fica aberta por ``idle_clos
 para a conversa fluir sem repetir o wake word. A janela vale pelo INÍCIO da fala: se o chefe começou a falar com o
 gate aberto, a transcrição é aceita mesmo que chegue depois de a janela fechar (o STT demora), até
 ``speech_grace_secs`` depois do início. Hesitação ("hmm",
-"peraí", "deixa eu pensar") não vai ao cérebro nem encerra: devolve ``hold`` e renova a janela.
+"peraí", "deixa eu pensar") não vai ao cérebro nem encerra: devolve ``hold`` e renova a janela. A exceção é a
+pergunta pendente (o cérebro foi interrompido antes de responder): aí a hesitação vai ao cérebro, que junta as falas
+e responde a pergunta.
 
 Puro: relógio entra por parâmetro, sem Pipecat.
 """
@@ -118,7 +120,8 @@ class ConversationGate:
 
     # ── transcrição ────────────────────────────────────────────────────────
 
-    def on_transcript(self, text: str, now: float) -> Decision:
+    def on_transcript(self, text: str, now: float, pending: bool = False) -> Decision:
+        """``pending``: a pergunta anterior ficou sem resposta; hesitação vai ao cérebro em vez de virar ``hold``."""
         # A marca de fala começada aberta vale para uma decisão só.
         open_ = self.accepting(now)
         self._speech_started_open_at = None
@@ -138,6 +141,9 @@ class ConversationGate:
             return Decision("end")
 
         if self._hold and self._hold.match(t) and open_:
+            if pending:
+                self.on_turn_forwarded()
+                return Decision("forward", rest_raw)
             self._open_until = max(self._open_until, now + self._window_secs)
             return Decision("hold")
 

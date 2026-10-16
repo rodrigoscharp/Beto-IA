@@ -195,3 +195,26 @@ def test_fim_do_ack_nao_encerra_o_turno_do_beto():
     g.on_bot_stopped(now=102)    # fim do ack
     g.on_bot_started(now=106)    # a resposta de verdade começa
     assert g.on_transcript("e depois de amanhã?", now=112).kind == "forward"
+
+
+
+# ── pergunta pendente: hesitação vai ao cérebro ────────────────────────────
+
+def _aberto():
+    g = contínuo()
+    g.on_transcript("Beto, oi", now=100); g.on_bot_stopped(now=101)
+    return g
+
+
+def test_hesitacao_com_pergunta_pendente_vai_ao_cerebro():
+    g = _aberto()
+    assert g.on_transcript("hmm", now=110, pending=True) == Decision("forward", "hmm")
+    assert g.is_open(now=500)   # turno aberto, como qualquer fala encaminhada
+
+
+def test_hesitacao_sem_pergunta_pendente_segue_hold():
+    assert _aberto().on_transcript("hmm", now=110, pending=False).kind == "hold"
+
+
+def test_encerramento_vale_mesmo_com_pergunta_pendente():
+    assert _aberto().on_transcript("tchau", now=110, pending=True).kind == "end"

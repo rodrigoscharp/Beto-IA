@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -203,3 +204,45 @@ async def test_last_acked_volta_a_false_no_turno_seguinte():
     llm._client = client_with(ndjson({"t": "Oi."}))
     await collect(llm, [])
     assert llm.last_acked is False
+
+
+# ── pergunta sem resposta (hesitação durante o loop de ferramentas) ────────
+
+class _ClienteTravado:
+    """Cérebro que manda um ack e fica preso no loop de ferramentas até ser cancelado."""
+
+    history = 20
+
+    def __init__(self):
+        self.started = asyncio.Event()
+
+    async def stream(self, _messages, _undo):
+        yield {"ack": "agenda"}
+        self.started.set()
+        await asyncio.Event().wait()
+
+
+@pytest.mark.asyncio
+async def test_respond_cancelado_antes_do_texto_fica_sem_resposta_e_relanca():
+    c = _ClienteTravado()
+    llm = BetoBrainLLMService(c)
+    assert llm.unanswered is False
+
+    async def emit(_f):
+        pass
+
+    task = asyncio.create_task(llm.respond([{"role": "user", "content": "o que tenho amanhã?"}], emit))
+    await c.started.wait()
+    assert llm.unanswered is False   # ainda respondendo
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert llm.unanswered is True
+
+
+@pytest.mark.asyncio
+async def test_respond_com_texto_fica_respondido():
+    llm = BetoBrainLLMService(client_with(ndjson({"t": "Oi."}, {"meta": {"mode": "chat"}})))
+    llm.unanswered = True   # sobra de um turno anterior cancelado
+    await collect(llm, [])
+    assert llm.unanswered is False

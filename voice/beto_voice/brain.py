@@ -134,6 +134,9 @@ class BetoBrainLLMService(LLMService):
         self._clock = clock
         self.last_reply_secs: float | None = None   # do início de ``respond`` ao primeiro texto vindo do cérebro
         self.last_acked = False   # este turno falou um ack antes da resposta?
+        # O último ``respond`` terminou (ou foi cancelado por uma fala do chefe) sem nenhum texto do cérebro: a
+        # pergunta ficou sem resposta, e o gate manda a hesitação seguinte ao cérebro em vez de segurar.
+        self.unanswered = False
         self._undo: dict | None = None
         self._emotions: deque[str] = deque(maxlen=64)
 
@@ -162,6 +165,8 @@ class BetoBrainLLMService(LLMService):
         started = self._clock()
         self.last_reply_secs = None
         self.last_acked = False
+        self.unanswered = False
+        answered = False
         ack_open = True   # só o primeiro ack, antes de qualquer texto, vale
 
         async def handle(events: list[Event]) -> None:
@@ -192,6 +197,8 @@ class BetoBrainLLMService(LLMService):
                         logger.info(f"[brain] ack sem áudio pronto: {phrase!r}")
                 elif "t" in line:
                     ack_open = False
+                    answered = True
+                    self.unanswered = False
                     if self.last_reply_secs is None:
                         self.last_reply_secs = self._clock() - started
                     await handle(filt.push(line["t"]))
@@ -211,7 +218,8 @@ class BetoBrainLLMService(LLMService):
             logger.error(f"[brain] falha: {e}")
             await handle(filt.finish())   # o que já chegou é falado
             await emit(TTSSpeakFrame(ERROR_TEXT))
-        finally:
+        finally:   # também no CancelledError, que segue adiante
+            self.unanswered = not answered
             self._emotions.append(emotion or "neutro")
             if self.last_reply_secs is not None:
                 logger.info(f"[latency] resposta={self.last_reply_secs:.2f}s")

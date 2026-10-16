@@ -21,9 +21,9 @@ class Clock:
         return self.t
 
 
-def _monta(monkeypatch, gate):
+def _monta(monkeypatch, gate, **kw):
     clock = Clock()
-    p = GateProcessor(gate, clock=clock)
+    p = GateProcessor(gate, clock=clock, **kw)
     pushed = []
 
     async def push(frame, direction=FrameDirection.DOWNSTREAM):
@@ -133,3 +133,14 @@ async def test_bot_comecou_a_falar_abre_o_turno_e_segue(proc, monkeypatch):
     await proc.process_frame(frame, FrameDirection.UPSTREAM)
     assert calls == [106]
     assert pushed == [(frame, FrameDirection.UPSTREAM)]   # segue no mesmo sentido
+
+
+async def test_pergunta_pendente_manda_a_hesitacao_ao_cerebro(monkeypatch):
+    gate = ConversationGate(
+        wake_words=["beto"], end_phrases=["valeu"], follow_up_secs=9, listen_secs=12,
+        continuous=True, idle_close_secs=60, hold_phrases=["hmm"],
+    )
+    p = _monta(monkeypatch, gate, pending=lambda: True)
+    gate.on_listen(p.clock())
+    await p.process_frame(tf("hmm"), FrameDirection.DOWNSTREAM)
+    assert [f.text for f in p.pushed if isinstance(f, TranscriptionFrame)] == ["hmm"]
