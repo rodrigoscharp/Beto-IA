@@ -144,10 +144,20 @@ test("saudação: cumprimenta e traz no máximo uma coisa real dos dados, sem in
   assert.ok(!full.includes("(o app já cuida disso)"), "a saudação não é mais só do app");
 });
 
-test("HONESTIDADE: pesquisa automática e sugestão de pedir 'pesquisa'", () => {
-  for (const p of [full, chat]) {
-    assert.ok(p.includes("a pesquisa na web acontece automaticamente"));
-    assert.ok(p.includes('"pesquisa"'));
-    assert.ok(!p.includes("Você não tem acesso à internet"));
+const OLD_HONESTY = "Você não tem acesso à internet nem a dados em tempo real (notícias, cotações, placar, clima) fora das integrações abaixo; se ele pedir isso e não houver tag adequada, diga que não consegue ver isso agora e ofereça o que puder com base no que você sabe.";
+
+test("HONESTIDADE com web: pesquisa automática e sugestão de pedir 'pesquisa'", () => {
+  for (const mode of ["full", "chat"]) {
+    const p = buildSystemPrompt({ ...input, web: true }, mode);
+    assert.ok(p.includes("a pesquisa na web acontece automaticamente"), mode);
+    assert.ok(p.includes('"pesquisa"'), mode);
+    assert.ok(!p.includes("Você não tem acesso à internet"), mode);
+  }
+});
+
+test("HONESTIDADE sem web (padrão e bateria de avaliação): a frase antiga, exata", () => {
+  for (const p of [full, chat, buildSystemPrompt({ ...input, web: false }, "full")]) {
+    assert.ok(p.includes(OLD_HONESTY));
+    assert.ok(!p.includes("a pesquisa na web acontece automaticamente"));
   }
 });

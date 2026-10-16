@@ -26,6 +26,9 @@ function logMetric(data: Record<string, unknown>) {
   console.log("[beto-metrics]", JSON.stringify({ evt: "chat", ...data }));
 }
 
+/** Pesquisa na web só com WEB_SEARCH=on: desligada por padrão. */
+const webSearchOn = () => process.env.WEB_SEARCH === "on";
+
 function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | null, tools: { calendar?: boolean; myhub?: boolean; memory?: boolean; content?: boolean } = {}) {
   const t = getBrasiliaTime();
   return buildSystemPrompt(
@@ -33,6 +36,7 @@ function promptFor(mode: PromptMode, memories: Memories, myhub: MyHubContext | n
       memories,
       myhubBlock: myHubPromptBlock(myhub, t.date, { writeConfigured: myHubWriteConfigured(), tools: !!tools.myhub }),
       date: t.date, dateLabel: t.dateLabel, time: t.time, period: t.period, calendar: !!tools.calendar, memory: !!tools.memory, content: !!tools.content,
+      web: webSearchOn(),   // com a pesquisa ligada, a HONESTIDADE explica a pesquisa automática
     },
     mode,
   );
@@ -241,7 +245,7 @@ export async function POST(req: NextRequest) {
     const t0 = Date.now();
     // `full`: o cliente já viu o modo conversa falhar (disse que fez sem ter ferramenta) e pede o prompt completo.
     const hubOn = myHubWriteConfigured();
-    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured(), content: myHubConfigured(), web: process.env.WEB_SEARCH !== "off" }, forceFull === true);
+    const plan = planTurn(messages, { myhubWrite: hubOn, memory: memoryConfigured(), content: myHubConfigured(), web: webSearchOn() }, forceFull === true);
     const mode: PromptMode = plan.mode;
     // O My Hub vai também na conversa simples (só leitura): é com ele que o Beto liga o papo à vida do chefe.
     // Tem cache de 2 min e, sem cache, espera no máximo 1,5 s (lib/myhub.ts).
