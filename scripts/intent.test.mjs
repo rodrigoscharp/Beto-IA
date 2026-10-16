@@ -532,3 +532,19 @@ test("wantsWeb: 'pesquisa' só dispara como pedido, no começo da fala", () => {
 test("wantsWeb: fala de sistema nunca dispara", () => {
   assert.equal(wantsWeb([u("[SISTEMA] pesquisa o placar do jogo")]), false);
 });
+
+test("wantsWeb: notícia boa, cotação de fornecedor, pesquisa substantivo, email, gasto, lead e aposta não disparam", () => {
+  for (const t of [
+    "tenho uma notícia boa pra te dar, fechei o cliente", "boa notícia, passei na entrevista",
+    "preciso mandar a cotação pro cliente", "o fornecedor mandou a cotação", "pesquisa de satisfação deu boa",
+    "pesquisa de mercado: vale a pena?", "quais as notícias do meu email?", "já lançou o gasto do uber?",
+    "a classificação do lead tá errada", "qual o placar da nossa aposta",
+  ]) assert.equal(wantsWeb([u(t)]), false, t);
+});
+
+test("wantsWeb: notícia, cotação, pesquisada e placar como pedido disparam", () => {
+  for (const t of [
+    "me dá as notícias de hoje", "quais as principais notícias de IA", "qual a cotação do dólar",
+    "dá uma pesquisada sobre o Pipecat", "qual foi o placar do jogo do Santos",
+  ]) assert.equal(wantsWeb([u(t)]), true, t);
+});

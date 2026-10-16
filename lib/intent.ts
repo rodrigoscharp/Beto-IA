@@ -323,11 +323,19 @@ export function wantsMemory(messages: ChatMsg[]): boolean {
 /* Pedido explícito de pesquisa ("pesquisa" só conta no começo da fala ou como "pesquisa pra mim"/"pesquisar sobre": "minha
    pesquisa de mercado deu bom" é o substantivo), ou coisa que muda com o tempo (notícia, cotação, placar, versão, tempo). Conservadora:
    "quanto custa fazer um mvp" (opinião), "o que aconteceu com o meu deploy" (GitHub) e "saiu o deploy?" não entram. */
-const WEB_EXPLICIT = /^(?:(?:beto|pode|da uma|faz uma)[, ]+)*(?:pesquisa|pesquise|pesquisar)\b|\bpesquis(?:a|e|ar) pra mim\b|\bpesquisar sobre\b|\b(?:procura|busca|ve|olha) na (?:internet|web)\b|\bbusca no google\b|\bda um google\b/;
-const WEB_NEWS = /\b(?:noticias?|manchetes?)\b|\bo que aconteceu (?:hoje|ontem|essa semana) (?:no|na|com)\b|\bo que saiu sobre\b|\balguma novidade sobre\b/;
-const WEB_MARKET = /\bcotacao\b|\bquanto (?:ta|esta|ficou|fechou) o (?:dolar|euro|bitcoin|ibovespa|real)\b|\bpreco (?:do|da) (?:bitcoin|acao|acoes|gasolina)\b|\bbolsa hoje\b/;
-const WEB_SPORT = /\bplacar\b|\bquanto (?:foi|ficou|ta|esta) o jogo\b|\bresultado do jogo\b|\bquem ganhou o jogo\b|\btabela do brasileirao\b|\bclassificacao do\b/;
-const WEB_VERSION = /\bultima versao (?:do|da|de)\b|\bversao mais recente\b|\bja lancou\b|\bquando lanca\b|\bja saiu (?:o|a) (?:novo|nova)\b/;
+const WEB_EXPLICIT = /^(?:(?:beto|pode|da uma|faz uma)[, ]+)*(?:pesquisa|pesquise|pesquisar)\b|\bpesquis(?:a|e|ar) pra mim\b|\bpesquisar sobre\b|\bda uma pesquisada (?:em|no|na|sobre)\b|\b(?:procura|busca|ve|olha) na (?:internet|web)\b|\bbusca no google\b|\bda um google\b/;
+/* "pesquisa de satisfação deu boa", "pesquisa mostrou que…": o substantivo no começo da fala não é pedido. */
+const WEB_NOUN = /^pesquisa (?:de|da|do|deu|mostrou|que)\b/;
+/* Notícia só como pedido ("quais as notícias", "me dá as notícias de hoje", "manchetes"); "tenho uma notícia boa" e
+   "as notícias do meu email" não são da web. */
+const WEB_NEWS = /\b(?:quais|me (?:da|de|conta|fala|passa)|tem alguma|ultimas|principais)\b.*\bnoticias?\b|\bnoticias? (?:de hoje|do dia|sobre|da semana)\b|\bmanchetes?\b|\bo que aconteceu (?:hoje|ontem|essa semana) (?:no|na|com)\b|\bo que saiu sobre\b|\balguma novidade sobre\b/;
+const WEB_NEWS_NOT = /\bboa noticia\b|\bnoticia boa\b|\btenho uma noticia\b|\bnoticias? (?:do meu|da minha)\b|\bno meu e-?mail\b|\bdo e-?mail\b/;
+/* Cotação só de ativo: "a cotação do fornecedor" é orçamento, não mercado. */
+const WEB_MARKET = /\bcotacao (?:do|da|de) (?:dolar|euro|bitcoin|ethereum|real|libra|ibovespa|bolsa|acao|acoes)\b|\bquanto (?:ta|esta|ficou|fechou) o (?:dolar|euro|bitcoin|ibovespa|real)\b|\bpreco (?:do|da) (?:bitcoin|acao|acoes|gasolina)\b|\bbolsa hoje\b/;
+/* Placar e classificação só com jogo, time ou campeonato: "o placar da nossa aposta" e "a classificação do lead" não. */
+const WEB_SPORT = /\bplacar (?:do|da) (?:jogo|partida)\b|\bplacar de \w+ (?:x|e|contra) \w+|\bquanto (?:foi|ficou|ta|esta) o jogo\b|\bresultado do jogo\b|\bquem ganhou o jogo\b|\btabela do brasileirao\b|\bclassificacao (?:do|da) (?:brasileirao|campeonato|libertadores|copa|f1|formula 1)\b/;
+/* "já lançou" só com produto ou versão: "já lançou o gasto do uber?" é do My Hub. */
+const WEB_VERSION = /\bultima versao (?:do|da|de)\b|\bversao mais recente\b|\bja lancou (?:o|a) (?:novo|nova|iphone|versao|\w+ \d+)\b|\bquando lanca\b|\bja saiu (?:o|a) (?:novo|nova)\b/;
 const WEB_WEATHER = /\bprevisao do tempo\b|\bvai chover\b|\btemperatura (?:hoje|amanha|agora) em\b/;
 
 /** A última fala do chefe pede pesquisa na web (explícita ou sobre algo atual). Na dúvida, falso. */
@@ -336,5 +344,6 @@ export function wantsWeb(messages: ChatMsg[]): boolean {
   if (!last || /^\s*\[SISTEMA\]/i.test(messages[last.index].content)) return false;
   if (words(last.text) < 2) return false;
   const t = last.text;
-  return WEB_EXPLICIT.test(t) || WEB_NEWS.test(t) || WEB_MARKET.test(t) || WEB_SPORT.test(t) || WEB_VERSION.test(t) || WEB_WEATHER.test(t);
+  return (WEB_EXPLICIT.test(t) && !WEB_NOUN.test(t)) || (WEB_NEWS.test(t) && !WEB_NEWS_NOT.test(t))
+    || WEB_MARKET.test(t) || WEB_SPORT.test(t) || WEB_VERSION.test(t) || WEB_WEATHER.test(t);
 }
