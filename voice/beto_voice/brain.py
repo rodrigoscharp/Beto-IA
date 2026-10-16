@@ -29,6 +29,7 @@ from pipecat.processors.frameworks.rtvi import RTVIServerMessageFrame
 from pipecat.services.llm_service import LLMService
 from pipecat.services.settings import LLMSettings
 
+from .ack import AckPhrases
 from .reply_filter import Action, Emotion, Event, ReplyFilter, Text
 
 ERROR_TEXT = "Não consegui falar com o cérebro agora, chefe."
@@ -48,6 +49,8 @@ def parse_line(raw: str) -> WireLine | None:
         return None
     if isinstance(v.get("t"), str):
         return {"t": v["t"]}
+    if isinstance(v.get("ack"), str) and v["ack"]:
+        return {"ack": v["ack"]}
     if v.get("retry") is True:
         return {"retry": True}
     meta = v.get("meta")
@@ -115,12 +118,22 @@ Emit = Callable[[Frame], Awaitable[None]]
 class BetoBrainLLMService(LLMService):
     """LLM do pipeline: delega ao /api/chat e traduz a resposta em frames."""
 
-    def __init__(self, client: BrainClient, *, clock: Callable[[], float] = time.monotonic, **kwargs):
+    def __init__(
+        self,
+        client: BrainClient,
+        *,
+        acks: AckPhrases | None = None,
+        is_cached: Callable[[str], bool] = lambda _t: False,
+        clock: Callable[[], float] = time.monotonic,
+        **kwargs,
+    ):
         super().__init__(settings=LLMSettings(model="beto-brain"), **kwargs)
         self._client = client
+        self._acks = acks
+        self._is_cached = is_cached
         self._clock = clock
         self.last_reply_secs: float | None = None   # do início de ``respond`` ao primeiro texto vindo do cérebro
-        self.last_acked = False   # a Task de ack liga; por ora nenhum turno tem ack
+        self.last_acked = False   # este turno falou um ack antes da resposta?
         self._undo: dict | None = None
         self._emotions: deque[str] = deque(maxlen=64)
 
@@ -148,6 +161,8 @@ class BetoBrainLLMService(LLMService):
         emotion: str | None = None
         started = self._clock()
         self.last_reply_secs = None
+        self.last_acked = False
+        ack_open = True   # só o primeiro ack, antes de qualquer texto, vale
 
         async def handle(events: list[Event]) -> None:
             nonlocal emotion
@@ -163,7 +178,20 @@ class BetoBrainLLMService(LLMService):
 
         try:
             async for line in self._client.stream(messages, self._undo):
-                if "t" in line:
+                if "ack" in line:
+                    if not ack_open or self._acks is None:
+                        logger.warning(f"[brain] ack ignorado: {line['ack']!r}")
+                        continue
+                    ack_open = False
+                    phrase = self._acks.next(line["ack"])
+                    if self._is_cached(phrase):
+                        self.last_acked = True
+                        await emit(RTVIServerMessageFrame(data={"type": "emotion", "emotion": "pensativo"}))
+                        await emit(TTSSpeakFrame(phrase, append_to_context=False))   # fora do histórico da conversa
+                    else:
+                        logger.info(f"[brain] ack sem áudio pronto: {phrase!r}")
+                elif "t" in line:
+                    ack_open = False
                     if self.last_reply_secs is None:
                         self.last_reply_secs = self._clock() - started
                     await handle(filt.push(line["t"]))

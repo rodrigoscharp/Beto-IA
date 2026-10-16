@@ -5,6 +5,7 @@ transport.input() → [rtvi] → stt → gate → user_aggregator → brain_llm 
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 from loguru import logger
@@ -29,6 +30,7 @@ from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
+from .ack import AckPhrases
 from .brain import BetoBrainLLMService, BrainClient
 from .config import Config
 from .gate import ConversationGate
@@ -56,8 +58,9 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
     )
     stt = build_stt(cfg.stt)
     brain = BrainClient(cfg.brain.url, cfg.brain.token, cfg.brain.history, cfg.brain.timeout_secs)
-    llm = BetoBrainLLMService(brain)
     tts = build_tts(cfg)
+    llm = BetoBrainLLMService(brain, acks=AckPhrases(cfg.ack.phrases()), is_cached=tts.cached)
+    prewarm_tasks: set[asyncio.Task] = set()   # referência forte: o loop só guarda referência fraca de tasks
 
     context = LLMContext()
     user_agg, assistant_agg = LLMContextAggregatorPair(
@@ -125,9 +128,20 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
         else:
             logger.warning(f"[bot] mensagem desconhecida do cliente: {kind}")
 
+    async def _prewarm_acks() -> None:
+        phrases = cfg.ack.all()
+        try:
+            ready = await tts.prewarm(phrases)
+            logger.info(f"[bot] acks prontos: {ready}/{len(phrases)}")
+        except Exception as e:   # o aquecimento é só otimização: falha dele não derruba a sessão
+            logger.warning(f"[bot] prewarm dos acks falhou: {e}")
+
     @transport.event_handler("on_client_connected")
     async def on_client_connected(_t, _client):
         logger.info("[bot] navegador conectado")
+        task = asyncio.create_task(_prewarm_acks())
+        prewarm_tasks.add(task)
+        task.add_done_callback(prewarm_tasks.discard)
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(_t, _client):
@@ -137,4 +151,6 @@ async def run_bot(connection: SmallWebRTCConnection, cfg: Config) -> None:
     try:
         await runner.run()
     finally:
+        for task in prewarm_tasks:
+            task.cancel()
         await brain.aclose()
