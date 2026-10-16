@@ -2216,5 +2216,391 @@
    "memory_save",
    "memory_forget"
   ]
+ },
+ {
+  "id": "est-01",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "qual o comando pra ver as branches remotas no git?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 30,
+    "naoContem": [
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i",
+     "/quer que eu detalhe/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-02",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "quanto é a raiz quadrada de cento e quarenta e quatro?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 20,
+    "naoContem": [
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i",
+     "/quer que eu detalhe/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-03",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "javascript diferencia maiúscula de minúscula nos nomes de variável?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 25,
+    "naoContem": [
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i",
+     "/quer que eu detalhe/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-04",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "assisti duna parte dois ontem, que filmaço"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 45,
+    "naoContem": [
+     "/quer que eu detalhe/i",
+     "/(mais alguma coisa|posso ajudar em (algo|mais)|algo mais\\?)/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-05",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "o que você acha de usar sqlite em produção pra um saas pequeno?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 110,
+    "naoContem": [
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i",
+     "/(mais alguma coisa|posso ajudar em (algo|mais)|algo mais\\?)/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-06",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tô pensando em migrar o backend pra bun, faz sentido?"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:pensativo] Faz sentido se o gargalo for tempo de build e cold start, chefe. Pra API simples o ganho é real."
+   },
+   {
+    "role": "user",
+    "content": "e os pacotes do node funcionam lá?"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] A grande maioria sim, chefe. O que costuma dar problema é addon nativo."
+   },
+   {
+    "role": "user",
+    "content": "e pra fazer deploy disso, vercel ou railway?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 110,
+    "naoContem": [
+     "/\\bchefe\\b/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-07",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "me explica rapidinho o que é idempotência"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Fechou. É quando repetir a mesma operação dá o mesmo resultado que fazer uma vez só."
+   },
+   {
+    "role": "user",
+    "content": "e por que isso importa em pagamento?"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:neutro] Fechou. Porque se a rede cair e o cliente tentar de novo, você não pode cobrar duas vezes."
+   },
+   {
+    "role": "user",
+    "content": "e como garante isso na prática?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 110,
+    "naoContem": [
+     "/^fechou/i",
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-08",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tô pensando em jantar fora hoje de novo, vale?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 70,
+    "contem": [
+     "/restaurante|gast|mês|orçamento|mil duzentos|1\\.?240/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-09",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "bom dia beto"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 40,
+    "contem": [
+     "/leitura|ler|proposta|luz|grava|epis[oó]dio|bio/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-10",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "preciso mandar aquela proposta pro cliente mas tô enrolando"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 90,
+    "naoContem": [
+     "/(mais alguma coisa|posso ajudar em (algo|mais)|algo mais\\?)/i",
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-11",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "valeu, ajudou demais"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 20,
+    "naoContem": [
+     "/(mais alguma coisa|posso ajudar em (algo|mais)|algo mais\\?)/i",
+     "/quer que eu detalhe/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
+ },
+ {
+  "id": "est-12",
+  "area": "estilo",
+  "conversa": [
+   {
+    "role": "user",
+    "content": "tô montando um saas de agendamento pra barbearia com next e supabase"
+   },
+   {
+    "role": "assistant",
+    "content": "[emo:animado] Stack boa pra isso, dá pra subir rápido. Qual a dúvida?"
+   },
+   {
+    "role": "user",
+    "content": "como eu cobro? mensal ou por agendamento?"
+   }
+  ],
+  "espera": {
+   "nenhumaFerramenta": true,
+   "texto": {
+    "maxPalavras": 110,
+    "naoContem": [
+     "/qual (é )?(o )?(seu )?(produto|stack|nicho|público)/i",
+     "/que tipo de (saas|negócio|produto)/i",
+     "/^(boa pergunta|ótima pergunta|excelente pergunta|claro[!,.]|entendi[!,.]|olha só)/i"
+    ]
+   }
+  },
+  "nunca": [
+   "create_event",
+   "update_event",
+   "delete_event",
+   "my_hub_register",
+   "my_hub_undo",
+   "memory_save",
+   "memory_forget"
+  ]
  }
 ]
