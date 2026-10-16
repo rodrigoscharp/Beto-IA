@@ -83,9 +83,10 @@ Não dispara (cada um vira teste de falso positivo):
 Caso aceito de propósito: "me conta uma notícia boa" dispara (notícia é gatilho), e o Beto pesquisa uma notícia boa do
 dia.
 
-**`TurnPlan` ganha `web: boolean`** em `lib/turnplan.ts`, e `TurnEnv` ganha `web: boolean` (busca ligada no
-servidor). Regra: `web = env.web && wantsWeb(messages) && nenhum dos conjuntos de ferramentas foi pedido`. Com
-`web = true`, o plano é `{ mode: "full", sets: null, web: true }`. `ToolSets` não muda, então o caminho de ferramentas
+**`TurnPlan` ganha `web?: true`** em `lib/turnplan.ts` (só presente quando o turno é de pesquisa, para não mudar a
+forma dos planos de hoje), e `TurnEnv` ganha `web?: boolean` (busca ligada no servidor; ausente = desligada, o que
+mantém a bateria de avaliação sem busca). Regra: web quando `env.web && wantsWeb(messages)` e nenhum dos conjuntos de
+ferramentas foi pedido. Nesse caso o plano é `{ mode: "full", sets: null, web: true }`. `ToolSets` não muda, então o caminho de ferramentas
 e a rede de proteção que liga "todas" (`all`, `everything`) não são afetados.
 
 **Chave de emergência:** a rota passa `web: process.env.WEB_SEARCH !== "off"`.
@@ -147,8 +148,9 @@ perguntar algo atual e não houver resultado de pesquisa nesta conversa, diga qu
 
 - `scripts/intent.test.mjs`: `wantsWeb` com pelo menos dois exemplos de cada grupo que dispara e todos os falsos
   positivos listados acima.
-- `scripts/turnplan.test.mjs`: web sozinho dá `{ mode: "full", sets: null, web: true }`; web com agenda pedida dá
-  `web: false` e os `sets` da agenda; `env.web = false` nunca liga web; conversa comum dá `web: false`.
+- `scripts/turnplan.test.mjs`: web sozinho dá `{ mode: "full", sets: null, web: true }`; web com agenda pedida não
+  tem `web` e tem os `sets` da agenda; `env.web` falso ou ausente nunca liga web; conversa comum continua
+  `{ mode: "chat", sets: null }`.
 - `scripts/web.test.mjs`: `cleanCitations` (marcador, vários marcadores, URL, espaço duplo, tag de emoção intacta);
   `webGuide` cita fonte e proíbe inventar; `webAnswer` com um cliente falso: primeiro modelo responde, primeiro falha e
   o segundo responde, os dois falham e vem o texto de erro com `ok: false`. (Para isso, `webAnswer` recebe a função de
