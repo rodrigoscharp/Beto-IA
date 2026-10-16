@@ -35,7 +35,7 @@ if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
 fi
 
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-sed -e "s|__VOICESTUDIO_DIR__|$VS_DIR|g" -e "s|__HOME__|$HOME|g" -e "s|__CERT__|$CERT|g" -e "s|__KEY__|$KEY|g" \
+sed -e "s|__VOICESTUDIO_DIR__|$VS_DIR|g" -e "s|__HOME__|$HOME|g" -e "s|__CERT__|$CERT|g" -e "s|__KEY__|$KEY|g" -e "s|__HERE__|$HERE|g" \
   "$HERE/$LABEL.plist" > "$DEST"
 plutil -lint "$DEST" >/dev/null
 

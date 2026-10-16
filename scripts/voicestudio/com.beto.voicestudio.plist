@@ -13,20 +13,19 @@
 
   <key>ProgramArguments</key>
   <array>
+    <!-- HTTPS com o certificado local do mkcert: o Safari não deixa uma página https (o Beto na Vercel) chamar http.
+         serve_tls.py em vez de "uvicorn --ssl-*": o truststore do VoiceStudio quebra o TLS do servidor (ver o arquivo). -->
     <string>__VOICESTUDIO_DIR__/.venv/bin/python</string>
-    <string>-m</string>
-    <string>uvicorn</string>
-    <string>main:app</string>
+    <string>__HERE__/serve_tls.py</string>
     <string>--app-dir</string>
     <string>backend</string>
     <string>--host</string>
     <string>127.0.0.1</string>
     <string>--port</string>
     <string>3900</string>
-    <!-- HTTPS com o certificado local do mkcert: o Safari não deixa uma página https (o Beto na Vercel) chamar http. -->
-    <string>--ssl-certfile</string>
+    <string>--cert</string>
     <string>__CERT__</string>
-    <string>--ssl-keyfile</string>
+    <string>--key</string>
     <string>__KEY__</string>
   </array>
 
