@@ -71,7 +71,7 @@ def test_padroes_novos_do_turno_e_do_ack(tmp_path):
     assert cfg.turn.idle_close_secs == 60
     assert "deixa eu pensar" in cfg.turn.hold_phrases
     assert cfg.ack.phrases()["agenda"][0] == "Deixa eu ver a agenda."
-    assert set(cfg.ack.phrases()) == {"conteudo", "agenda", "myhub", "memoria", "geral"}
+    assert set(cfg.ack.phrases()) == {"conteudo", "agenda", "myhub", "memoria", "geral", "web"}
     assert all(len(f.split()) <= 6 and "chefe" not in f.lower() for f in cfg.ack.all())
 
 
@@ -99,3 +99,11 @@ def test_ack_do_toml_substitui_so_a_chave_informada(tmp_path):
 def test_toml_do_repo_nao_encerra_com_beleza_nem_fechou():
     cfg = load_config(env={})
     assert "beleza" not in cfg.turn.end_phrases and "fechou" not in cfg.turn.end_phrases
+
+
+def test_ack_web_padrao_e_validacao(tmp_path):
+    cfg = load_config(write_toml(tmp_path), env={})
+    assert cfg.ack.phrases()["web"] == ["Deixa eu pesquisar.", "Vou dar uma olhada."]
+    assert "Deixa eu pesquisar." in cfg.ack.all()
+    with pytest.raises(ValueError, match=r"\[ack\]\.web"):
+        load_config(write_toml(tmp_path, ack="web = []"), env={})

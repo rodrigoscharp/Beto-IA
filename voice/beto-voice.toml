@@ -62,6 +62,8 @@ myhub = ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."]
 memoria = ["Deixa eu ver o que guardei.", "Um segundo."]
 # Qualquer outra ferramenta.
 geral = ["Um segundo.", "Deixa eu ver.", "Já vejo isso."]
+# Pesquisa na web (notícia, cotação, placar, clima...).
+web = ["Deixa eu pesquisar.", "Vou dar uma olhada."]
 
 [tts]
 # Voz pelo VoiceStudio no Mac (scripts/voicestudio/ o deixa sempre ligado). Env VOICESTUDIO_URL sobrescreve a url.

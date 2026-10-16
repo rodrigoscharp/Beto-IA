@@ -18,7 +18,7 @@ export interface WireMeta {
 
 export type WireLine = { t: string } | { retry: true } | { ack: AckKind } | { meta: WireMeta };
 
-const ACK_KINDS: readonly AckKind[] = ["conteudo", "agenda", "myhub", "memoria", "geral"];
+const ACK_KINDS: readonly AckKind[] = ["conteudo", "agenda", "myhub", "memoria", "geral", "web"];
 
 export function encodeLine(line: WireLine): string {
   return JSON.stringify(line) + "\n";

@@ -2,7 +2,7 @@
    curta enquanto a ferramenta roda. Pura: só o tipo ToolSets. */
 import type { ToolSets } from "./turnplan";
 
-export type AckKind = "conteudo" | "agenda" | "myhub" | "memoria" | "geral";
+export type AckKind = "conteudo" | "agenda" | "myhub" | "memoria" | "geral" | "web";
 
 /** Escolhe pelo que vai rodar, na ordem de prioridade: conteúdo, agenda, My Hub, memória. */
 export function ackKind(sets: ToolSets): AckKind {

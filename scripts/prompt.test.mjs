@@ -143,3 +143,11 @@ test("saudação: cumprimenta e traz no máximo uma coisa real dos dados, sem in
   }
   assert.ok(!full.includes("(o app já cuida disso)"), "a saudação não é mais só do app");
 });
+
+test("HONESTIDADE: pesquisa automática e sugestão de pedir 'pesquisa'", () => {
+  for (const p of [full, chat]) {
+    assert.ok(p.includes("a pesquisa na web acontece automaticamente"));
+    assert.ok(p.includes('"pesquisa"'));
+    assert.ok(!p.includes("Você não tem acesso à internet"));
+  }
+});

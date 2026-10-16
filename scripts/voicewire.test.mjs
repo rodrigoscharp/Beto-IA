@@ -28,3 +28,7 @@ test("ack: ida e volta, e só tipos conhecidos", () => {
   assert.equal(parseLine('{"ack":3}'), null);
   assert.equal(parseLine('{"ack":"outro"}'), null);
 });
+
+test("ack web", () => {
+  assert.deepEqual(parseLine(encodeLine({ ack: "web" })), { ack: "web" });
+});

@@ -69,6 +69,7 @@ class AckCfg:
     myhub: list[str] = field(default_factory=lambda: ["Deixa eu ver no My Hub.", "Um instante, abrindo o My Hub."])
     memoria: list[str] = field(default_factory=lambda: ["Deixa eu ver o que guardei.", "Um segundo."])
     geral: list[str] = field(default_factory=lambda: ["Um segundo.", "Deixa eu ver.", "Já vejo isso."])
+    web: list[str] = field(default_factory=lambda: ["Deixa eu pesquisar.", "Vou dar uma olhada."])
 
     def phrases(self) -> dict[str, list[str]]:
         return {
@@ -77,6 +78,7 @@ class AckCfg:
             "myhub": self.myhub,
             "memoria": self.memoria,
             "geral": self.geral,
+            "web": self.web,
         }
 
     def all(self) -> list[str]:
