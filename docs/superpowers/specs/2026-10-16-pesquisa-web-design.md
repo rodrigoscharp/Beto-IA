@@ -89,7 +89,7 @@ mantém a bateria de avaliação sem busca). Regra: web quando `env.web && wants
 ferramentas foi pedido. Nesse caso o plano é `{ mode: "full", sets: null, web: true }`. `ToolSets` não muda, então o caminho de ferramentas
 e a rede de proteção que liga "todas" (`all`, `everything`) não são afetados.
 
-**Chave de emergência:** a rota passa `web: process.env.WEB_SEARCH !== "off"`.
+**Liga e desliga:** a busca fica desligada por padrão e só liga com `WEB_SEARCH=on` (a rota passa `web: process.env.WEB_SEARCH === "on"`), até a sondagem confirmar que ela funciona na conta. O prompt só fala da pesquisa automática quando ela está ligada; desligada, HONESTIDADE mantém a frase antiga. A pesquisa inteira tem prazo único de 40 s (até 30 s por modelo; o segundo só é tentado se sobrarem 8 s).
 
 ### 3. Chamada (`lib/web.ts`)
 

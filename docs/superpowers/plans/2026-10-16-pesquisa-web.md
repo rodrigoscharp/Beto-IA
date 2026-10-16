@@ -14,7 +14,7 @@
 
 - Modelos de pesquisa, nesta ordem: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`. Parâmetros: `tools: [{"type": "browser_search"}]`, `tool_choice: "required"`, `reasoning_effort: "low"`, `temperature: 0.3`, `max_tokens: 900`, sem stream.
 - Turno de pesquisa é só pesquisa: com qualquer conjunto de ferramentas pedido (agenda, My Hub, memória, conteúdo), não há pesquisa.
-- `TurnPlan.web` é `true` ou ausente; `TurnEnv.web` ausente = desligado. A rota passa `web: process.env.WEB_SEARCH !== "off"`.
+- `TurnPlan.web` é `true` ou ausente; `TurnEnv.web` ausente = desligado. A rota passa `web: process.env.WEB_SEARCH === "on"` (desligada por padrão; decisão da revisão final).
 - Texto de falha, exato: `[emo:triste] Não consegui pesquisar agora. Tenta de novo daqui a pouco.`
 - Métrica: `tools: ["browser_search"]` com sucesso, `["browser_search:erro"]` com falha.
 - Ack de pesquisa: tipo `"web"`; frases padrão `["Deixa eu pesquisar.", "Vou dar uma olhada."]`.
@@ -28,7 +28,7 @@
 2. Resposta só com marcadores e URL (sobra vazio depois da limpeza): conta como falha do modelo e passa ao próximo. Teste na Task 3.
 3. "pesquisa" sozinho (uma palavra) não dispara. Teste na Task 2.
 4. Pergunta de pesquisa no caminho de stream do navegador: o navegador recebe texto, não JSON. Conferido no ensaio (Task 6) e no tipo de resposta da Task 5.
-5. `WEB_SEARCH=off`: a pergunta atual cai na conversa comum e o Beto sugere pedir "pesquisa" (regra do prompt), sem chamar a busca. Teste na Task 2 (env desligado).
+5. Sem `WEB_SEARCH=on`: a pergunta atual cai na conversa comum, HONESTIDADE usa a frase antiga e a busca não é chamada. Teste na Task 2 (env desligado) e no teste de prompt.
 
 ---
 
@@ -295,7 +295,7 @@ git commit -m "feat(web): ack de pesquisa na voz e prompt que conhece a pesquisa
 
 - [ ] **Step 1: Ligar o env e montar o system da pesquisa**
 
-`planTurn(messages, { ..., web: process.env.WEB_SEARCH !== "off" }, forceFull === true)`. Função local `webSystem()` = `promptFor("full", memories, myhub) + "\n\n" + webGuide()`.
+`planTurn(messages, { ..., web: process.env.WEB_SEARCH === "on" }, forceFull === true)`. Função local `webSystem()` = `promptFor("full", memories, myhub) + "\n\n" + webGuide()`.
 
 - [ ] **Step 2: NDJSON**
 
