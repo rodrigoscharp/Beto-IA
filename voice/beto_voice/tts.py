@@ -18,6 +18,20 @@ from .config import TtsCfg
 
 SAMPLE_RATE = 24000   # o PCM do VoiceStudio é sempre 24 kHz
 
+# PCM por (frase, voz, passos, velocidade), do processo inteiro: cada conexão do navegador cria um serviço novo, e
+# refazer os acks no VoiceStudio a cada conexão competiria com as respostas de verdade.
+CacheKey = tuple[str, str, int, float]
+_CACHE: dict[CacheKey, bytes] = {}
+
+
+def _cache_key(text: str, cfg: TtsCfg) -> CacheKey:
+    return (text.strip(), cfg.voice, cfg.num_step, cfg.speed)
+
+
+def _clear_cache() -> None:
+    """Esvazia o cache do processo (testes)."""
+    _CACHE.clear()
+
 
 def speech_payload(text: str, cfg: TtsCfg) -> dict:
     """Corpo de POST /v1/audio/speech: perfil de voz fixo, português, modo rápido."""
@@ -48,7 +62,8 @@ def voicestudio_online(url: str, client: httpx.Client | None = None) -> bool:
 class VoiceStudioTTSService(TTSService):
     """TTS do Pipecat que pede cada frase ao VoiceStudio.
 
-    Frases curtas e conhecidas (os acks) são sintetizadas antes, com `prewarm`, e tocam do cache na hora.
+    Frases curtas e conhecidas (os acks) são sintetizadas antes, com `prewarm`, e tocam do cache na hora. O cache é
+    do processo e vale entre conexões.
     """
 
     def __init__(self, cfg: TtsCfg, *, client: httpx.AsyncClient | None = None, **kwargs):
@@ -61,7 +76,6 @@ class VoiceStudioTTSService(TTSService):
         )
         self._cfg = cfg
         self._client = client or httpx.AsyncClient(base_url=cfg.url, timeout=cfg.timeout_secs)
-        self._cache: dict[str, bytes] = {}   # PCM por frase (text.strip())
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -71,23 +85,23 @@ class VoiceStudioTTSService(TTSService):
         await self._client.aclose()
 
     def cached(self, text: str) -> bool:
-        """A frase já está sintetizada no cache?"""
-        return text.strip() in self._cache
+        """A frase já está sintetizada no cache, com a voz deste serviço?"""
+        return _cache_key(text, self._cfg) in _CACHE
 
     async def prewarm(self, texts: list[str]) -> int:
         """Sintetiza as frases antes de precisarem. Devolve quantas ficaram no cache; falha numa não derruba as outras."""
         for text in texts:
-            key = text.strip()
-            if key in self._cache:
+            key = _cache_key(text, self._cfg)
+            if key in _CACHE:
                 continue
             try:
-                r = await self._client.post("/v1/audio/speech", json=speech_payload(key, self._cfg))
+                r = await self._client.post("/v1/audio/speech", json=speech_payload(key[0], self._cfg))
                 if r.status_code != 200:
-                    logger.warning(f"[voz] prewarm de {key!r}: VoiceStudio {r.status_code}")
+                    logger.warning(f"[voz] prewarm de {key[0]!r}: VoiceStudio {r.status_code}")
                     continue
-                self._cache[key] = r.content
+                _CACHE[key] = r.content
             except httpx.HTTPError as e:
-                logger.warning(f"[voz] prewarm de {key!r} falhou: {e}")
+                logger.warning(f"[voz] prewarm de {key[0]!r} falhou: {e}")
         return len({t.strip() for t in texts if self.cached(t)})
 
     async def _cached_chunks(self, pcm: bytes) -> AsyncIterator[bytes]:
@@ -97,7 +111,7 @@ class VoiceStudioTTSService(TTSService):
             yield pcm[i : i + size]
 
     async def run_tts(self, text: str, context_id: str) -> AsyncGenerator[Frame, None]:
-        pcm = self._cache.get(text.strip())
+        pcm = _CACHE.get(_cache_key(text, self._cfg))
         if pcm is not None:
             await self.start_tts_usage_metrics(text)
             async for frame in self._stream_audio_frames_from_iterator(
@@ -129,3 +143,4 @@ class VoiceStudioTTSService(TTSService):
             yield TTSStoppedFrame(context_id=context_id)
         finally:
             await self.stop_ttfb_metrics()
+

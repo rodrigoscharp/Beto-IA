@@ -1,9 +1,19 @@
 import json
 
 import httpx
+import pytest
 
+from beto_voice import tts as tts_mod
 from beto_voice.config import TtsCfg
 from beto_voice.tts import VoiceStudioTTSService, speech_payload, voicestudio_online
+
+
+@pytest.fixture(autouse=True)
+def _cache_limpo():
+    """O cache de áudio é do processo: cada teste começa e termina com ele vazio."""
+    tts_mod._clear_cache()
+    yield
+    tts_mod._clear_cache()
 
 
 def test_payload():
@@ -28,9 +38,9 @@ def test_voicestudio_online_so_com_status_ok():
     assert not voicestudio_online("http://vs", client=_client(down))
 
 
-def _tts(handler) -> VoiceStudioTTSService:
+def _tts(handler, cfg: TtsCfg | None = None) -> VoiceStudioTTSService:
     client = httpx.AsyncClient(base_url="http://vs", transport=httpx.MockTransport(handler))
-    return VoiceStudioTTSService(TtsCfg(), client=client)
+    return VoiceStudioTTSService(cfg or TtsCfg(), client=client)
 
 
 async def test_prewarm_guarda_pcm_e_segue_quando_uma_falha():
@@ -64,3 +74,27 @@ async def test_run_tts_do_cache_nao_chama_o_voicestudio():
     frames = [f async for f in tts.run_tts("Um segundo.", "ctx")]
     assert calls == []
     assert frames   # quadros de áudio saíram
+
+
+async def test_cache_e_do_processo_e_vale_entre_conexoes():
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(200, content=b"\x01\x00" * 480)
+
+    primeiro = _tts(handler)
+    assert await primeiro.prewarm(["Um segundo."]) == 1
+    calls.clear()
+    segundo = _tts(handler)   # nova conexão do navegador, mesma config
+    assert segundo.cached("Um segundo.")
+    assert await segundo.prewarm(["Um segundo."]) == 1
+    assert calls == []
+
+
+async def test_cache_separa_por_voz():
+    def handler(_req):
+        return httpx.Response(200, content=b"\x01\x00" * 480)
+
+    await _tts(handler).prewarm(["Um segundo."])
+    assert not _tts(handler, TtsCfg(voice="Outra")).cached("Um segundo.")
