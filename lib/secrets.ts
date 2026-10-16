@@ -31,24 +31,34 @@ export function decrypt(blob: string): string | null {
 }
 
 const GOOGLE_RT = "google_refresh_token";
+const SPOTIFY_RT = "spotify_refresh_token";
 
-/** Chamado no callback do OAuth do Google. Melhor esforço: falhar aqui não pode quebrar o login. */
-export async function saveGoogleRefreshToken(rt: string): Promise<boolean> {
+/** Melhor esforço: falhar aqui não pode quebrar o login. */
+async function saveSecret(name: string, plain: string): Promise<boolean> {
   try {
-    const value = encrypt(rt);
+    const value = encrypt(plain);
     if (!value) return false;
-    const { error } = await supabase.from("push_secrets").upsert({ name: GOOGLE_RT, value, updated_at: new Date().toISOString() });
-    if (error) console.warn("[Beto] não guardou o refresh token:", error.message);
+    const { error } = await supabase.from("push_secrets").upsert({ name, value, updated_at: new Date().toISOString() });
+    if (error) console.warn(`[Beto] não guardou ${name}:`, error.message);
     return !error;
   } catch (e) {
-    console.warn("[Beto] não guardou o refresh token:", e instanceof Error ? e.message : e);
+    console.warn(`[Beto] não guardou ${name}:`, e instanceof Error ? e.message : e);
     return false;
   }
 }
 
-export async function loadGoogleRefreshToken(): Promise<string | null> {
+async function loadSecret(name: string): Promise<string | null> {
   try {
-    const { data } = await supabase.from("push_secrets").select("value").eq("name", GOOGLE_RT).maybeSingle();
+    const { data } = await supabase.from("push_secrets").select("value").eq("name", name).maybeSingle();
     return data?.value ? decrypt(data.value as string) : null;
   } catch { return null; }
 }
+
+/** Chamado no callback do OAuth do Google. */
+export const saveGoogleRefreshToken = (rt: string) => saveSecret(GOOGLE_RT, rt);
+export const loadGoogleRefreshToken = () => loadSecret(GOOGLE_RT);
+
+/** Chamado no callback do Spotify e quando o Spotify troca o refresh token: o endereço local do Safari não tem o
+    cookie sp_rt e usa este (ver lib/tokens.ts). */
+export const saveSpotifyRefreshToken = (rt: string) => saveSecret(SPOTIFY_RT, rt);
+export const loadSpotifyRefreshToken = () => loadSecret(SPOTIFY_RT);

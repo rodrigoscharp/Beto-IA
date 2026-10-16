@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { loadGoogleRefreshToken } from "@/lib/secrets";
+import { refreshTokenFor } from "@/lib/tokens";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -38,7 +39,7 @@ export function googleFetch(token: string, url: string, opts?: RequestInit) {
   });
 }
 
-/* ── Token: reads gc_at cookie, refreshes via gc_rt if needed ───────────── */
+/* ── Token: reads gc_at cookie, refreshes via gc_rt (or the stored one) if needed ── */
 
 // Access token renovado via refresh token: reaproveita por 45 min (o polling de avisos chama a cada 2 min).
 let refreshed: { rt: string; token: string; exp: number } | null = null;
@@ -67,12 +68,18 @@ export async function getGoogleToken(req: NextRequest): Promise<string | null> {
   const at = req.cookies.get("gc_at")?.value;
   if (at) return at;
 
-  const rt = req.cookies.get("gc_rt")?.value;
+  // Sem cookie (endereço local do Safari): o refresh token guardado no servidor.
+  const rt = await refreshTokenFor(req.cookies.get("gc_rt")?.value, storedGoogleRefreshToken);
   return rt ? refreshAccessToken(rt) : null;
 }
 
-/** Sem navegador (cron de push): refresh token da env ou o guardado (criptografado) no Supabase no login do Google. */
+/** Refresh token da env ou o guardado (criptografado) no Supabase no login do Google. */
+export async function storedGoogleRefreshToken(): Promise<string | null> {
+  return process.env.GOOGLE_REFRESH_TOKEN ?? await loadGoogleRefreshToken();
+}
+
+/** Sem navegador (cron de push). */
 export async function getServerGoogleToken(): Promise<string | null> {
-  const rt = process.env.GOOGLE_REFRESH_TOKEN ?? await loadGoogleRefreshToken();
+  const rt = await storedGoogleRefreshToken();
   return rt ? refreshAccessToken(rt) : null;
 }

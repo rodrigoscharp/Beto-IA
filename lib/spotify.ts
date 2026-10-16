@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { loadSpotifyRefreshToken, saveSpotifyRefreshToken } from "@/lib/secrets";
+import { refreshTokenFor } from "@/lib/tokens";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -41,13 +43,14 @@ export async function spotifyError(res: Response): Promise<string | null> {
   return `Erro do Spotify (${res.status}).`;
 }
 
-/* ── Token: reads sp_at cookie, refreshes via sp_rt if needed ───────────── */
+/* ── Token: reads sp_at cookie, refreshes via sp_rt (or the stored one) if needed ── */
 
 export async function getSpotifyToken(req: NextRequest): Promise<SpotifyTokenResult | null> {
   const at = req.cookies.get("sp_at")?.value;
   if (at) return { token: at };
 
-  const rt = req.cookies.get("sp_rt")?.value;
+  // Sem cookie (endereço local do Safari): o refresh token guardado no servidor.
+  const rt = await refreshTokenFor(req.cookies.get("sp_rt")?.value, loadSpotifyRefreshToken);
   if (!rt) return null;
 
   const res = await fetch("https://accounts.spotify.com/api/token", {
@@ -61,5 +64,7 @@ export async function getSpotifyToken(req: NextRequest): Promise<SpotifyTokenRes
 
   if (!res.ok) return null;
   const data = await res.json();
+  // O Spotify às vezes troca o refresh token: guarda o novo, senão o do servidor para de valer.
+  if (data.refresh_token && data.refresh_token !== rt) await saveSpotifyRefreshToken(data.refresh_token);
   return { token: data.access_token, newToken: data.access_token, expiresIn: data.expires_in };
 }
